@@ -1,0 +1,43 @@
+{
+  "name": "nix-workbench-lite",
+  "version": "0.3.11",
+  "description": "Lightweight WSL file tree, editor, and terminal workbench for Claude Code",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis portable",
+    "audit": "npm audit",
+    "clean": "node -e \"require('fs').rmSync('node_modules',{recursive:true,force:true}); require('fs').rmSync('package-lock.json',{force:true})\""
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "node-pty": "^1.0.0"
+  },
+  "devDependencies": {
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.local.nixworkbenchlite",
+    "productName": "Nix Workbench Lite",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "fileAssociations": [
+      {
+        "ext": "nwl-workspace",
+        "name": "Nix Workbench Workspace",
+        "description": "Nix Workbench Lite workspace file",
+        "role": "Editor"
+      }
+    ]
+  }
+}

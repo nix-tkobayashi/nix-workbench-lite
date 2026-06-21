@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Nix Workbench Lite</title>
+  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css" />
+</head>
+<body>
+  <div id="toolbar">
+    <span class="title">Nix Workbench Lite</span>
+    <span id="cwd"></span>
+    <button id="refreshBtn">Refresh</button>
+    <button id="saveBtn" disabled>Save</button>
+    <button id="claudeBtn">Start Claude</button>
+  </div>
+  <div id="layout">
+    <aside id="treePane">
+      <div id="tree"></div>
+    </aside>
+    <div id="verticalResizer" class="resizer vertical" title="Drag to resize"></div>
+    <main id="rightPane">
+      <section id="editorPane">
+        <div id="editorBar">
+          <span id="editorTitle">Editor</span>
+          <span id="dirtyMark"></span>
+        </div>
+        <textarea id="editor" spellcheck="false" placeholder="Select a text file from the left tree."></textarea>
+      </section>
+      <div id="horizontalResizer" class="resizer horizontal" title="Drag to resize"></div>
+      <section id="terminalPane">
+        <div id="terminal"></div>
+      </section>
+    </main>
+  </div>
+  <div id="contextMenu" class="context-menu hidden">
+    <button data-action="new-file">New File</button>
+    <button data-action="new-folder">New Folder</button>
+    <div class="menu-separator"></div>
+    <button data-action="rename">Rename</button>
+    <button data-action="delete" class="danger">Delete</button>
+    <div class="menu-separator"></div>
+    <button data-action="reveal">Reveal in Explorer</button>
+    <button data-action="open-new-window">Open in New Window</button>
+  </div>
+  <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="./renderer.js"></script>
+</body>
+</html>
