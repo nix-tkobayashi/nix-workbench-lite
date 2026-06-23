@@ -17,14 +17,15 @@ Lightweight Windows Electron app for working in WSL:
 
 ## Download (Windows)
 
-No Node.js needed to run:
+No Node.js needed to run. Grab one of these from the [**latest release**](https://github.com/nix-tkobayashi/nix-workbench-lite/releases/latest):
 
-1. Open the [**latest release**](https://github.com/nix-tkobayashi/nix-workbench-lite/releases/latest).
-2. Download `Nix Workbench Lite-<version>-win.zip`.
-3. Extract it anywhere and run `Nix Workbench Lite.exe`.
+- **Installer** — `Nix Workbench Lite Setup <version>.exe` (NSIS). Installs per-user, adds Start Menu / desktop shortcuts, and registers `.nwl-workspace` files. Recommended.
+- **Portable** — `Nix Workbench Lite <version>.exe`. A single self-contained exe; just run it.
+- **Zip** — `Nix Workbench Lite-<version>-win.zip`. Extract anywhere and run `Nix Workbench Lite.exe`.
 
 Requires WSL. On first launch, choose a workspace (Open Workspace / Open Workspace File).
-The build is unsigned, so Windows SmartScreen may warn on first run — choose **More info → Run anyway**.
+The builds are unsigned, so Windows SmartScreen may warn on first run — choose **More info → Run anyway**.
+Check **Help > About Nix Workbench Lite** for your version and update notifications.
 
 ## Run from source
 
