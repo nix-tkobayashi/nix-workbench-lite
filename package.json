@@ -1,6 +1,6 @@
 {
   "name": "wsl-workbench",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Lightweight WSL file tree, editor, and terminal workbench for AI CLIs",
   "main": "src/main.js",
   "scripts": {
@@ -36,7 +36,7 @@
     },
     "fileAssociations": [
       {
-        "ext": "nwl-workspace",
+        "ext": "wslwb-workspace",
         "name": "WSL Workbench Workspace",
         "description": "WSL Workbench workspace file",
         "role": "Editor"

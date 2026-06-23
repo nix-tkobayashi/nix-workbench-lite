@@ -10,9 +10,11 @@ const { normalizeVersion, isNewer } = require('./version');
 const RELEASES_API = 'https://api.github.com/repos/nix-tkobayashi/wsl-workbench/releases/latest';
 const RELEASES_PAGE = 'https://github.com/nix-tkobayashi/wsl-workbench/releases/latest';
 
-const DEFAULT_DISTRO = process.env.NWL_DISTRO || process.env.CWL_DISTRO || 'Ubuntu';
-const DEFAULT_WSL_PATH = process.env.NWL_WSL_PATH || process.env.CWL_WSL_PATH || `/home/${os.userInfo().username}/projects`;
-const DEFAULT_WSL_HOME_PATH = process.env.NWL_WSL_HOME_PATH || process.env.CWL_WSL_HOME_PATH || `/home/${os.userInfo().username}`;
+const DEFAULT_DISTRO = process.env.WSLWB_DISTRO || 'Ubuntu';
+const DEFAULT_WSL_PATH = process.env.WSLWB_PATH || `/home/${os.userInfo().username}/projects`;
+const DEFAULT_WSL_HOME_PATH = process.env.WSLWB_HOME_PATH || `/home/${os.userInfo().username}`;
+
+const WORKSPACE_EXT = 'wslwb-workspace';
 
 const windowState = new Map();
 
@@ -55,7 +57,7 @@ function defaultWorkspace() {
   return { distro: DEFAULT_DISTRO, wslPath: DEFAULT_WSL_PATH };
 }
 
-const WORKSPACE_EXTENSIONS = new Set(['.nwl-workspace', '.json']);
+const WORKSPACE_EXTENSIONS = new Set([`.${WORKSPACE_EXT}`, '.json']);
 
 function isWorkspaceFile(filePath) {
   if (!filePath) return false;
@@ -279,7 +281,7 @@ async function openWorkspaceFileDialog(win, state) {
     title: tr('dialog.openWorkspaceFile'),
     properties: ['openFile'],
     filters: [
-      { name: tr('filter.workspace'), extensions: ['nwl-workspace', 'json'] },
+      { name: tr('filter.workspace'), extensions: [WORKSPACE_EXT, 'json'] },
       { name: tr('filter.allFiles'), extensions: ['*'] }
     ]
   });
@@ -406,11 +408,13 @@ function buildAppMenu() {
           click: async () => {
             const { win, state } = getFocusedWindowAndState();
             if (!win || !state) return;
+            // Default the filename to the workspace directory name, e.g. test003.wslwb-workspace.
+            const dirName = String(state.workspace.wslPath || '').split('/').filter(Boolean).pop() || 'workspace';
             const result = await dialog.showSaveDialog(win, {
               title: tr('dialog.saveWorkspace'),
-              defaultPath: 'wsl-workbench.nwl-workspace',
+              defaultPath: `${dirName}.${WORKSPACE_EXT}`,
               filters: [
-                { name: tr('filter.workspace'), extensions: ['nwl-workspace', 'json'] },
+                { name: tr('filter.workspace'), extensions: [WORKSPACE_EXT, 'json'] },
                 { name: tr('filter.allFiles'), extensions: ['*'] }
               ]
             });
