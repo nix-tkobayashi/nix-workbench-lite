@@ -19,7 +19,7 @@ Lightweight Windows Electron app for working in WSL:
 
 No Node.js needed to run. Grab one of these from the [**latest release**](https://github.com/nix-tkobayashi/wsl-workbench/releases/latest):
 
-- **Installer** — `WSL Workbench Setup <version>.exe` (NSIS). Installs per-user, adds Start Menu / desktop shortcuts, and registers `.nwl-workspace` files. Recommended.
+- **Installer** — `WSL Workbench Setup <version>.exe` (NSIS). Installs per-user, adds Start Menu / desktop shortcuts, and registers `.wslwb-workspace` files. Recommended.
 - **Portable** — `WSL Workbench <version>.exe`. A single self-contained exe; just run it.
 - **Zip** — `WSL Workbench-<version>-win.zip`. Extract anywhere and run `WSL Workbench.exe`.
 
@@ -89,13 +89,13 @@ Path: /home/<user>/projects
 Override:
 
 ```powershell
-$env:NWL_DISTRO="Ubuntu"
-$env:NWL_WSL_PATH="/home/<user>/projects/my-repo"
-$env:NWL_WSL_HOME_PATH="/home/<user>"   # default location of the Open Workspace dialog
+$env:WSLWB_DISTRO="Ubuntu"
+$env:WSLWB_PATH="/home/<user>/projects/my-repo"
+$env:WSLWB_HOME_PATH="/home/<user>"   # default location of the Open Workspace dialog
 npm start
 ```
 
-Opening a folder from another WSL distro (e.g. `Ubuntu-22.04`) is supported — the distro is taken from the selected path. The old `CWL_DISTRO` and `CWL_WSL_PATH` environment variables are still accepted for compatibility.
+Opening a folder from another WSL distro (e.g. `Ubuntu-22.04`) is supported — the distro is taken from the selected path.
 
 ## Notes
 
@@ -106,6 +106,11 @@ Internal tree drag and drop performs move/rename via Windows UNC path:
 ```
 
 The editor is intentionally minimal. Test file editing and drag/drop operations in a throwaway directory before using it on important repositories.
+
+## v0.5.0
+
+- Renamed the workspace file extension to `.wslwb-workspace` and the environment variables to `WSLWB_DISTRO` / `WSLWB_PATH` / `WSLWB_HOME_PATH`. The old `.nwl-workspace` extension and `NWL_*` / `CWL_*` variables were removed.
+- Save Workspace now defaults the filename to the workspace directory name (e.g. `test003.wslwb-workspace`).
 
 ## v0.4.0
 
@@ -188,9 +193,9 @@ The editor is intentionally minimal. Test file editing and drag/drop operations 
 
 ## Workspace files
 
-- `Workspace > Save Workspace...` saves the current workspace as `*.nwl-workspace`.
+- `Workspace > Save Workspace...` saves the current workspace as `*.wslwb-workspace`.
 - `Workspace > Open Workspace File...` loads a saved workspace and switches the current window to that directory.
-- When the NSIS installer build is installed, `*.nwl-workspace` is registered as a WSL Workbench workspace file. Double-clicking it starts the app with that workspace.
+- When the NSIS installer build is installed, `*.wslwb-workspace` is registered as a WSL Workbench workspace file. Double-clicking it starts the app with that workspace.
 - Portable builds may not register the file association automatically; use `Open Workspace File...` in that case.
 
 
