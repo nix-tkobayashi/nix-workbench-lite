@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { wslToUnc, wslPathToWindowsFsPath, windowsDrivePathToWsl, uncToWsl } = require('../src/wsl-paths');
+const { wslToUnc, wslPathToWindowsFsPath, windowsDrivePathToWsl, uncToWsl, parseSelectedPath } = require('../src/wsl-paths');
 
 test('wslToUnc builds a \\\\wsl.localhost UNC path', () => {
   assert.equal(wslToUnc('Ubuntu', '/home/skype/projects'), '\\\\wsl.localhost\\Ubuntu\\home\\skype\\projects');
@@ -45,4 +45,47 @@ test('Open Workspace round-trips: UNC selection -> WSL path -> back to the same 
   const wslPath = uncToWsl(distro, selected);
   assert.equal(wslPath, '/home/skype/projects/test003');
   assert.equal(wslPathToWindowsFsPath(distro, wslPath), selected);
+});
+
+test('parseSelectedPath reads the distro from a \\\\wsl.localhost selection', () => {
+  assert.deepEqual(
+    parseSelectedPath('\\\\wsl.localhost\\Ubuntu\\home\\skype\\projects\\test003'),
+    { distro: 'Ubuntu', wslPath: '/home/skype/projects/test003' }
+  );
+  // legacy \\wsl$ form
+  assert.deepEqual(
+    parseSelectedPath('\\\\wsl$\\Ubuntu\\home\\skype'),
+    { distro: 'Ubuntu', wslPath: '/home/skype' }
+  );
+});
+
+test('parseSelectedPath handles a non-default distro like Ubuntu-22.04 (regression)', () => {
+  // Previously the prefix match "Ubuntu" swallowed "Ubuntu-22.04" and produced /-22.04/...
+  assert.deepEqual(
+    parseSelectedPath('\\\\wsl.localhost\\Ubuntu-22.04\\home\\skype\\projects\\ubiregi\\ubiregi-server-infrastructure'),
+    { distro: 'Ubuntu-22.04', wslPath: '/home/skype/projects/ubiregi/ubiregi-server-infrastructure' }
+  );
+});
+
+test('parseSelectedPath round-trips a non-default distro back to the correct UNC', () => {
+  const selected = '\\\\wsl.localhost\\Ubuntu-22.04\\home\\skype\\projects\\x';
+  const { distro, wslPath } = parseSelectedPath(selected);
+  assert.equal(wslPathToWindowsFsPath(distro, wslPath), selected);
+});
+
+test('parseSelectedPath returns null distro for drive paths and Linux paths', () => {
+  assert.deepEqual(parseSelectedPath('C:\\dev\\repo'), { distro: null, wslPath: '/mnt/c/dev/repo' });
+  assert.deepEqual(parseSelectedPath('/home/skype/x'), { distro: null, wslPath: '/home/skype/x' });
+});
+
+test('parseSelectedPath maps a distro root with no subpath to /', () => {
+  assert.deepEqual(parseSelectedPath('\\\\wsl.localhost\\Ubuntu'), { distro: 'Ubuntu', wslPath: '/' });
+});
+
+test('uncToWsl no longer corrupts a non-default distro path (regression)', () => {
+  // even called with the wrong distro arg, the distro is read from the path
+  assert.equal(
+    uncToWsl('Ubuntu', '\\\\wsl.localhost\\Ubuntu-22.04\\home\\x'),
+    '/home/x'
+  );
 });
