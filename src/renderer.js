@@ -13,6 +13,7 @@ let contextNode = null;
 const layout = document.getElementById('layout');
 const rightPane = document.getElementById('rightPane');
 const editor = document.getElementById('editor');
+const imagePreview = document.getElementById('imagePreview');
 const editorTitle = document.getElementById('editorTitle');
 const dirtyMark = document.getElementById('dirtyMark');
 
@@ -74,8 +75,25 @@ function terminalResize() {
   window.api.terminalResize({ cols: term.cols, rows: term.rows });
 }
 window.addEventListener('resize', terminalResize);
-term.onData((data) => window.api.terminalWrite(data));
+// After the shell exits (`exit`), the pty is gone. Instead of a dead terminal, let any keystroke
+// restart it (also available via the Workspace > Restart Terminal menu).
+let terminalExited = false;
+function restartTerminal() {
+  if (!config) return;
+  terminalExited = false;
+  term.clear();
+  window.api.terminalStart({ ...config, command: '' });
+  setTimeout(terminalResize, 200);
+}
+term.onData((data) => {
+  if (terminalExited) { restartTerminal(); return; }
+  window.api.terminalWrite(data);
+});
 window.api.onTerminalData((data) => term.write(data));
+window.api.onTerminalExit(() => {
+  terminalExited = true;
+  term.write(`\r\n\x1b[90m${t('terminal.restartHint')}\x1b[0m\r\n`);
+});
 
 function copyTerminalSelection() {
   const selection = term.getSelection();
@@ -132,6 +150,15 @@ function shellQuotePath(p) {
   return `'${p.replace(/'/g, `'\\''`)}'`;
 }
 
+// True while an image is shown in the preview, so save/dirty logic doesn't touch it.
+let currentIsImage = false;
+
+function showImagePreview(on) {
+  currentIsImage = on;
+  imagePreview.style.display = on ? 'block' : 'none';
+  editor.style.display = on ? 'none' : '';
+}
+
 function setDirty(value) {
   editorDirty = value;
   dirtyMark.textContent = editorDirty ? t('editor.unsaved') : '';
@@ -140,6 +167,26 @@ function setDirty(value) {
 async function loadFile(node) {
   selectedPath = node.path;
   editorTitle.textContent = node.path;
+
+  if (window.fileTypes.isImagePath(node.path)) {
+    try {
+      imagePreview.src = await window.api.readImage({ distro: config.distro, wslPath: node.path });
+      showImagePreview(true);
+      setDirty(false);
+      return;
+    } catch (error) {
+      // Fall back to showing the error in the text view.
+      imagePreview.removeAttribute('src');
+      showImagePreview(false);
+      editor.value = String(error.message || error);
+      editor.disabled = true;
+      setDirty(false);
+      return;
+    }
+  }
+
+  showImagePreview(false);
+  imagePreview.removeAttribute('src');
   try {
     editor.value = await window.api.readFile({ distro: config.distro, wslPath: node.path });
     editor.disabled = false;
@@ -158,7 +205,9 @@ editor.addEventListener('input', () => {
 // Save the current editor file. Triggered from the Workspace > Save File menu (Ctrl+S);
 // the toolbar Save button was removed in favor of the menu.
 async function saveCurrentFile() {
-  if (!selectedPath || !config) return;
+  // Skip when there's no editable text buffer: no file, an image preview, or an error/read-failure
+  // view (editor.disabled) — otherwise Ctrl+S would write the error text over the file.
+  if (!selectedPath || !config || currentIsImage || editor.disabled) return;
   try {
     await window.api.writeFile({ distro: config.distro, wslPath: selectedPath, content: editor.value });
     setDirty(false);
@@ -182,6 +231,8 @@ function clearEditorIfAffected(targetPath) {
     editor.value = '';
     editorTitle.textContent = t('editor.title');
     editor.disabled = false;
+    showImagePreview(false);
+    imagePreview.removeAttribute('src');
     setDirty(false);
   }
 }
@@ -355,6 +406,8 @@ function rowFor(node) {
         selectedPath = null;
         editor.value = '';
         editorTitle.textContent = t('editor.title');
+        showImagePreview(false);
+        imagePreview.removeAttribute('src');
         setDirty(false);
       }
       await renderTree();
@@ -431,11 +484,13 @@ async function applyWorkspace(nextConfig) {
   // Snapshot so we can fully roll back if the new workspace fails to load.
   const prevConfig = config;
   const prevExpanded = new Set(expanded);
-  const prevEditor = { selectedPath, value: editor.value, title: editorTitle.textContent, disabled: editor.disabled, dirty: editorDirty };
+  const prevEditor = { selectedPath, value: editor.value, title: editorTitle.textContent, disabled: editor.disabled, dirty: editorDirty, image: currentIsImage, imageSrc: imagePreview.getAttribute('src') };
   config = nextConfig;
   selectedPath = null;
   editor.value = '';
   editorTitle.textContent = t('editor.title');
+  showImagePreview(false);
+  imagePreview.removeAttribute('src');
   setDirty(false);
   expanded.clear();
   expanded.add(config.wslPath);
@@ -451,6 +506,8 @@ async function applyWorkspace(nextConfig) {
     editor.value = prevEditor.value;
     editorTitle.textContent = prevEditor.title;
     editor.disabled = prevEditor.disabled;
+    if (prevEditor.imageSrc) imagePreview.setAttribute('src', prevEditor.imageSrc); else imagePreview.removeAttribute('src');
+    showImagePreview(prevEditor.image);
     setDirty(prevEditor.dirty);
     if (prevConfig) {
       window.api.resyncWorkspace({ workspace: prevConfig, showLanding: false });
@@ -461,6 +518,7 @@ async function applyWorkspace(nextConfig) {
     return;
   }
   landing.classList.add('hidden');
+  terminalExited = false; // fresh terminal for the new workspace
   window.api.terminalStart({ ...config, command: '' });
   setTimeout(terminalResize, 300);
 }
@@ -570,6 +628,8 @@ function initTreeRootDropTarget() {
         selectedPath = null;
         editor.value = '';
         editorTitle.textContent = t('editor.title');
+        showImagePreview(false);
+        imagePreview.removeAttribute('src');
         setDirty(false);
       }
       await renderTree();
@@ -643,6 +703,7 @@ async function pollTreeChanges() {
 
 window.api.onMenuSaveFile(() => saveCurrentFile());
 window.api.onMenuRefreshTree(() => renderTree());
+window.api.onMenuRestartTerminal(() => restartTerminal());
 window.api.onLangChanged((lang) => {
   currentLang = window.i18n.normalizeLang(lang);
   applyLanguage();

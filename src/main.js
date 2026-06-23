@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const pty = require('node-pty');
 const i18n = require('./i18n');
+const { imageMimeForPath } = require('./file-types');
 
 const DEFAULT_DISTRO = process.env.NWL_DISTRO || process.env.CWL_DISTRO || 'Ubuntu';
 const DEFAULT_WSL_PATH = process.env.NWL_WSL_PATH || process.env.CWL_WSL_PATH || `/home/${os.userInfo().username}/projects`;
@@ -324,6 +325,10 @@ function buildAppMenu() {
           click: () => sendToFocusedWindow('menu:refreshTree')
         },
         {
+          label: tr('menu.restartTerminal'),
+          click: () => sendToFocusedWindow('menu:restartTerminal')
+        },
+        {
           label: tr('menu.saveWorkspace'),
           accelerator: 'CmdOrCtrl+Shift+S',
           click: async () => {
@@ -484,6 +489,16 @@ ipcMain.handle('file:read', (_event, { distro = DEFAULT_DISTRO, wslPath }) => {
   return fs.readFileSync(fullPath, 'utf8');
 });
 
+// Read an image file as a data: URL for the renderer's <img> preview.
+ipcMain.handle('file:readImage', (_event, { distro = DEFAULT_DISTRO, wslPath }) => {
+  const fullPath = wslPathToWindowsFsPath(distro, wslPath);
+  const stat = safeStat(fullPath);
+  if (!stat || !stat.isFile()) throw new Error(`File not found: ${wslPath}`);
+  if (stat.size > 16 * 1024 * 1024) throw new Error('Image is larger than 16MB.');
+  const data = fs.readFileSync(fullPath).toString('base64');
+  return `data:${imageMimeForPath(wslPath)};base64,${data}`;
+});
+
 ipcMain.handle('file:write', (_event, { distro = DEFAULT_DISTRO, wslPath, content }) => {
   if (!wslPath) throw new Error('wslPath is required.');
   const fullPath = wslPathToWindowsFsPath(distro, wslPath);
@@ -604,7 +619,11 @@ ipcMain.on('terminal:start', (event, { distro, wslPath, command = '' }) => {
     if (!win.isDestroyed()) win.webContents.send('terminal:data', data);
   });
   state.shellPty.onExit(() => {
-    if (!win.isDestroyed()) win.webContents.send('terminal:data', '\r\n[terminal exited]\r\n');
+    state.shellPty = null;
+    if (!win.isDestroyed()) {
+      win.webContents.send('terminal:data', `\r\n\x1b[90m${tr('terminal.exited')}\x1b[0m\r\n`);
+      win.webContents.send('terminal:exit');
+    }
   });
 });
 
