@@ -28,32 +28,35 @@ function windowsDrivePathToWsl(windowsPath) {
   return `/mnt/${drive}${rest ? `/${rest}` : ''}`;
 }
 
-function uncToWsl(distro, inputPath) {
-  if (!inputPath) return inputPath;
+// Parse a path chosen from the Windows dialog into { distro, wslPath }.
+// The distro is read FROM the path's \\wsl.localhost\<distro>\... segment (any distro name,
+// e.g. Ubuntu-22.04), so opening a folder in a non-default distro works. distro is null for
+// drive paths (/mnt/<drive>) and already-WSL paths, meaning "keep the current distro".
+function parseSelectedPath(inputPath) {
+  if (!inputPath) return { distro: null, wslPath: inputPath };
 
   // Already a WSL/Linux path.
-  if (inputPath.startsWith('/')) return inputPath;
+  if (inputPath.startsWith('/')) return { distro: null, wslPath: inputPath };
 
-  // WSL UNC path: \\wsl.localhost\Ubuntu\home\... or \\wsl$\Ubuntu\home\...
+  // WSL UNC path: \\wsl.localhost\<distro>\... or \\wsl$\<distro>\... (one distro segment).
   const normalized = inputPath.replace(/\\/g, '/');
-  const candidates = [
-    `//wsl.localhost/${distro}`.toLowerCase(),
-    `//wsl$/${distro}`.toLowerCase()
-  ];
-  const lower = normalized.toLowerCase();
-  for (const prefix of candidates) {
-    if (lower.startsWith(prefix)) {
-      const rest = normalized.slice(prefix.length);
-      return rest.startsWith('/') ? rest : `/${rest}`;
-    }
+  const match = normalized.match(/^\/\/(?:wsl\.localhost|wsl\$)\/([^/]+)(\/.*)?$/i);
+  if (match) {
+    return { distro: match[1], wslPath: match[2] || '/' };
   }
 
-  // Native Windows path selected from the Open Directory dialog.
-  // Use WSL's automatic /mnt/<drive> mount so both tree and terminal use the same directory.
+  // Native Windows drive path selected from the dialog -> /mnt/<drive> mount.
   const drivePath = windowsDrivePathToWsl(inputPath);
-  if (drivePath) return drivePath;
+  if (drivePath) return { distro: null, wslPath: drivePath };
 
-  return inputPath;
+  return { distro: null, wslPath: inputPath };
 }
 
-module.exports = { wslToUnc, wslPathToWindowsFsPath, windowsDrivePathToWsl, uncToWsl };
+// Back-compat wrapper: convert a selected path to a WSL path. The `distro` argument is no longer
+// used for matching (the distro is read from the path itself); callers that need the distro should
+// use parseSelectedPath instead.
+function uncToWsl(_distro, inputPath) {
+  return parseSelectedPath(inputPath).wslPath;
+}
+
+module.exports = { wslToUnc, wslPathToWindowsFsPath, windowsDrivePathToWsl, uncToWsl, parseSelectedPath };

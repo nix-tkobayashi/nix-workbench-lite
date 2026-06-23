@@ -119,7 +119,7 @@ function setCurrentWorkspaceForWindow(win, next) {
   }
 }
 
-const { wslPathToWindowsFsPath, uncToWsl } = require('./wsl-paths');
+const { wslPathToWindowsFsPath, parseSelectedPath } = require('./wsl-paths');
 
 
 function safeStat(fullPath) {
@@ -260,10 +260,12 @@ async function openWorkspaceDialog(win, state) {
     properties: ['openDirectory']
   });
   if (result.canceled || !result.filePaths[0]) return;
-  const selected = result.filePaths[0];
+  const parsed = parseSelectedPath(result.filePaths[0]);
   setCurrentWorkspaceForWindow(win, {
-    distro: state.workspace.distro,
-    wslPath: uncToWsl(state.workspace.distro, selected)
+    // Use the distro from the selected path (supports non-default distros like Ubuntu-22.04);
+    // fall back to the current distro for drive (/mnt) selections.
+    distro: parsed.distro || state.workspace.distro,
+    wslPath: parsed.wslPath
   });
 }
 
@@ -592,7 +594,8 @@ ipcMain.handle('folder:pick', async (event) => {
   });
   if (result.canceled || !result.filePaths[0]) return null;
   const selected = result.filePaths[0];
-  return { windowsPath: selected, wslPath: uncToWsl(state.workspace.distro, selected) };
+  const parsed = parseSelectedPath(selected);
+  return { windowsPath: selected, wslPath: parsed.wslPath, distro: parsed.distro || state.workspace.distro };
 });
 
 ipcMain.on('terminal:start', (event, { distro, wslPath, command = '' }) => {
