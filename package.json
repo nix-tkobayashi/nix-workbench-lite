@@ -1,6 +1,6 @@
 {
   "name": "nix-workbench-lite",
-  "version": "0.3.11",
+  "version": "0.4.0",
   "description": "Lightweight WSL file tree, editor, and terminal workbench for Claude Code",
   "main": "src/main.js",
   "scripts": {
