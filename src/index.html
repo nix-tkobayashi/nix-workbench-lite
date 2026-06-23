@@ -24,6 +24,7 @@
           <span id="dirtyMark"></span>
         </div>
         <textarea id="editor" spellcheck="false" data-i18n-placeholder="editor.placeholder" placeholder="Select a text file from the left tree."></textarea>
+        <img id="imagePreview" alt="" />
       </section>
       <div id="horizontalResizer" class="resizer horizontal" data-i18n-title="ui.dragToResize" title="Drag to resize"></div>
       <section id="terminalPane">
@@ -62,6 +63,7 @@
     </div>
   </div>
   <script src="./i18n.js"></script>
+  <script src="./file-types.js"></script>
   <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
   <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
   <script src="./renderer.js"></script>

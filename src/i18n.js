@@ -63,6 +63,9 @@ const translations = {
     'menu.zoomOut': 'Zoom Out',
     'menu.toggleFullscreen': 'Toggle Full Screen',
     'ui.dragToResize': 'Drag to resize',
+    'menu.restartTerminal': 'Restart Terminal',
+    'terminal.exited': '[terminal exited]',
+    'terminal.restartHint': '[Press Enter to restart the terminal]',
     'claude.notFound': 'Error: claude not found in WSL PATH (only a Windows claude under /mnt, if any). Install it inside WSL: npm i -g @anthropic-ai/claude-code'
   },
   ja: {
@@ -121,6 +124,9 @@ const translations = {
     'menu.zoomOut': '縮小',
     'menu.toggleFullscreen': '全画面表示の切り替え',
     'ui.dragToResize': 'ドラッグでサイズ変更',
+    'menu.restartTerminal': 'ターミナルを再起動',
+    'terminal.exited': '[ターミナルが終了しました]',
+    'terminal.restartHint': '[Enter キーでターミナルを再起動します]',
     'claude.notFound': 'エラー: WSL の PATH に claude が見つかりません（/mnt 配下の Windows 版を除く）。WSL 内でインストールしてください: npm i -g @anthropic-ai/claude-code'
   }
 };

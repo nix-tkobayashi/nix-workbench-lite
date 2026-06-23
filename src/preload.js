@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('api', {
   readTree: (args) => ipcRenderer.invoke('tree:read', args),
   treeSignature: (args) => ipcRenderer.invoke('tree:signature', args),
   readFile: (args) => ipcRenderer.invoke('file:read', args),
+  readImage: (args) => ipcRenderer.invoke('file:readImage', args),
   writeFile: (args) => ipcRenderer.invoke('file:write', args),
   move: (args) => ipcRenderer.invoke('fs:move', args),
   createFsItem: (args) => ipcRenderer.invoke('fs:create', args),
@@ -23,8 +24,10 @@ contextBridge.exposeInMainWorld('api', {
   terminalWrite: (data) => ipcRenderer.send('terminal:write', data),
   terminalResize: (size) => ipcRenderer.send('terminal:resize', size),
   onTerminalData: (cb) => ipcRenderer.on('terminal:data', (_event, data) => cb(data)),
+  onTerminalExit: (cb) => ipcRenderer.on('terminal:exit', () => cb()),
   onWorkspaceChanged: (cb) => ipcRenderer.on('workspace:changed', (_event, data) => cb(data)),
   onMenuSaveFile: (cb) => ipcRenderer.on('menu:saveFile', () => cb()),
   onMenuRefreshTree: (cb) => ipcRenderer.on('menu:refreshTree', () => cb()),
+  onMenuRestartTerminal: (cb) => ipcRenderer.on('menu:restartTerminal', () => cb()),
   onLangChanged: (cb) => ipcRenderer.on('lang:changed', (_event, lang) => cb(lang))
 });
