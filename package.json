@@ -7,6 +7,7 @@
     "start": "electron .",
     "test": "node --test test/",
     "dist": "electron-builder --win nsis portable",
+    "dist:zip": "electron-builder --win zip",
     "audit": "npm audit",
     "clean": "node -e \"require('fs').rmSync('node_modules',{recursive:true,force:true}); require('fs').rmSync('package-lock.json',{force:true})\""
   },
@@ -22,6 +23,7 @@
   "build": {
     "appId": "com.local.nixworkbenchlite",
     "productName": "Nix Workbench Lite",
+    "npmRebuild": false,
     "files": [
       "src/**/*",
       "package.json"
