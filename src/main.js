@@ -5,6 +5,10 @@ const os = require('os');
 const pty = require('node-pty');
 const i18n = require('./i18n');
 const { imageMimeForPath } = require('./file-types');
+const { normalizeVersion, isNewer } = require('./version');
+
+const RELEASES_API = 'https://api.github.com/repos/nix-tkobayashi/nix-workbench-lite/releases/latest';
+const RELEASES_PAGE = 'https://github.com/nix-tkobayashi/nix-workbench-lite/releases/latest';
 
 const DEFAULT_DISTRO = process.env.NWL_DISTRO || process.env.CWL_DISTRO || 'Ubuntu';
 const DEFAULT_WSL_PATH = process.env.NWL_WSL_PATH || process.env.CWL_WSL_PATH || `/home/${os.userInfo().username}/projects`;
@@ -287,6 +291,77 @@ async function openWorkspaceFileDialog(win, state) {
   }
 }
 
+// Only open https URLs on github.com (never trust an arbitrary URL from the API response).
+function safeReleaseUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol === 'https:' && u.hostname === 'github.com') {
+      return u.toString();
+    }
+  } catch {}
+  return RELEASES_PAGE;
+}
+
+// Fetch the latest release version from GitHub (best-effort, short timeout).
+async function fetchLatestRelease() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const res = await fetch(RELEASES_API, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'nix-workbench-lite' },
+      signal: controller.signal
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return { version: normalizeVersion(data.tag_name), url: safeReleaseUrl(data.html_url) };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// "About" dialog: shows the current version, checks GitHub for the latest, and offers to open the
+// release page when a newer version exists.
+async function showAboutDialog(win) {
+  const current = app.getVersion();
+  const latest = await fetchLatestRelease();
+
+  const lines = [`${tr('about.currentVersion')}: ${current}`];
+  let buttons = [tr('about.close')];
+  let openIndex = -1;
+  let openUrl = RELEASES_PAGE;
+
+  if (latest && latest.version) {
+    lines.push(`${tr('about.latestVersion')}: ${latest.version}`);
+    if (isNewer(latest.version, current)) {
+      lines.push('', tr('about.updateAvailable'));
+      buttons = [tr('about.openReleasePage'), tr('about.close')];
+      openIndex = 0;
+      openUrl = latest.url;
+    } else {
+      lines.push('', tr('about.upToDate'));
+    }
+  } else {
+    lines.push('', tr('about.checkFailed'));
+  }
+
+  const target = win && !win.isDestroyed() ? win : null;
+  const opts = {
+    type: 'info',
+    title: tr('menu.about'),
+    message: 'Nix Workbench Lite',
+    detail: lines.join('\n'),
+    buttons,
+    defaultId: 0,
+    cancelId: buttons.length - 1
+  };
+  const result = target ? await dialog.showMessageBox(target, opts) : await dialog.showMessageBox(opts);
+  if (openIndex >= 0 && result.response === openIndex) {
+    try { await shell.openExternal(openUrl); } catch {}
+  }
+}
+
 function buildAppMenu() {
   const template = [
     {
@@ -396,6 +471,18 @@ function buildAppMenu() {
           type: 'radio',
           checked: currentLang === 'ja',
           click: () => setLanguage('ja')
+        }
+      ]
+    },
+    {
+      label: tr('menu.help'),
+      submenu: [
+        {
+          label: tr('menu.about'),
+          click: () => {
+            const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+            showAboutDialog(win);
+          }
         }
       ]
     }
