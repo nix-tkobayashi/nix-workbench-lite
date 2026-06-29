@@ -32,5 +32,9 @@ contextBridge.exposeInMainWorld('api', {
   onMenuRefreshTree: (cb) => ipcRenderer.on('menu:refreshTree', () => cb()),
   onMenuRestartTerminal: (cb) => ipcRenderer.on('menu:restartTerminal', () => cb()),
   onLangChanged: (cb) => ipcRenderer.on('lang:changed', (_event, lang) => cb(lang)),
-  onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_event, payload) => cb(payload))
+  onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_event, payload) => cb(payload)),
+  windowMinimize: () => ipcRenderer.send('window:minimize'),
+  windowToggleMaximize: () => ipcRenderer.send('window:toggleMaximize'),
+  windowClose: () => ipcRenderer.send('window:close'),
+  onWindowMaximized: (cb) => ipcRenderer.on('window:maximized', (_event, isMax) => cb(isMax))
 });

@@ -232,7 +232,11 @@ function createWindow(initialWorkspace = defaultWorkspace(), { showLanding = fal
     height: 820,
     minWidth: 880,
     minHeight: 560,
-    autoHideMenuBar: true, // hide the native menu-bar row; menus are reachable from the in-app toolbar (and Alt)
+    // Custom title bar (like VS Code / Cursor): frameless window with the toolbar drawn in its place.
+    // The toolbar is the drag region; min/max/close are custom buttons wired to IPC below. The app
+    // menu is retained only for keyboard accelerators (autoHideMenuBar keeps it from drawing a row).
+    frame: false,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -255,6 +259,13 @@ function createWindow(initialWorkspace = defaultWorkspace(), { showLanding = fal
     }
     windowState.delete(win.id);
   });
+
+  // Keep the custom maximize/restore button glyph in sync with the actual window state.
+  const sendMaximized = () => {
+    if (!win.isDestroyed()) win.webContents.send('window:maximized', win.isMaximized());
+  };
+  win.on('maximize', sendMaximized);
+  win.on('unmaximize', sendMaximized);
 
   win.loadFile(path.join(__dirname, 'index.html'));
   buildAppMenu();
@@ -682,6 +693,20 @@ ipcMain.on('clipboard:writeText', (event, text) => {
 });
 ipcMain.on('clipboard:readText', (event) => {
   event.returnValue = clipboard.readText();
+});
+
+// Custom window controls (frameless window): the toolbar's min/max/close buttons drive these.
+ipcMain.on('window:minimize', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.minimize();
+});
+ipcMain.on('window:toggleMaximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+  if (win.isMaximized()) win.unmaximize();
+  else win.maximize();
+});
+ipcMain.on('window:close', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.close();
 });
 
 // Pop a top-level application menu's submenu at a screen position, so the in-app toolbar buttons

@@ -673,7 +673,9 @@ async function renderTree() {
   tree.innerHTML = '';
   tree.appendChild(fragment);
   tree.scrollTop = prevScroll;
-  document.getElementById('cwd').textContent = `${cfg.distro}:${cfg.wslPath}`;
+  const cwdEl = document.getElementById('cwd');
+  cwdEl.textContent = `${cfg.distro}:${cfg.wslPath}`;
+  cwdEl.title = cwdEl.textContent;
   // Invalidate the poll baseline so a just-rendered state is not re-detected as a change.
   lastTreeSignature = null;
 }
@@ -910,6 +912,16 @@ window.api.onLangChanged((lang) => {
 });
 window.api.onWorkspaceChanged(async (nextConfig) => {
   await applyWorkspace(nextConfig);
+});
+
+// Custom window controls (frameless window).
+const winMaxBtn = document.getElementById('winMax');
+document.getElementById('winMin').addEventListener('click', () => window.api.windowMinimize());
+winMaxBtn.addEventListener('click', () => window.api.windowToggleMaximize());
+document.getElementById('winClose').addEventListener('click', () => window.api.windowClose());
+window.api.onWindowMaximized((isMax) => {
+  winMaxBtn.innerHTML = isMax ? '&#xE923;' : '&#xE922;'; // restore (overlapping squares) : maximize (single square)
+  winMaxBtn.setAttribute('aria-label', isMax ? 'Restore' : 'Maximize');
 });
 
 // One-click update: main streams the installer download, then launches it and quits.
