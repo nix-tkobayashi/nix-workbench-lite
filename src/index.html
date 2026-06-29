@@ -35,7 +35,27 @@
         <div id="editorBar">
           <div id="editorTabList"></div>
         </div>
-        <textarea id="editor" spellcheck="false" data-i18n-placeholder="editor.placeholder" placeholder="Select a text file from the left tree."></textarea>
+        <div id="findWidget" class="hidden">
+          <div class="find-row">
+            <button id="findToggleReplace" class="find-toggle find-expand" aria-expanded="false" data-i18n-title="find.toggleReplace" title="Toggle Replace">&#x203A;</button>
+            <input id="findInput" type="text" spellcheck="false" autocomplete="off" data-i18n-placeholder="find.placeholder" placeholder="Find" />
+            <button id="findCase" class="find-toggle" aria-pressed="false" data-i18n-title="find.caseSensitive" title="Match case">Aa</button>
+            <span id="findCount" class="find-count"></span>
+            <button id="findPrev" class="find-btn" data-i18n-title="find.previous" title="Previous">&#x2191;</button>
+            <button id="findNext" class="find-btn" data-i18n-title="find.next" title="Next">&#x2193;</button>
+            <button id="findClose" class="find-btn" data-i18n-title="find.close" title="Close">&#x2715;</button>
+          </div>
+          <div class="find-row find-replace-row">
+            <input id="replaceInput" type="text" spellcheck="false" autocomplete="off" data-i18n-placeholder="find.replacePlaceholder" placeholder="Replace" />
+            <button id="replaceOne" class="find-btn find-text-btn" data-i18n="find.replace" data-i18n-title="find.replace" title="Replace">Replace</button>
+            <button id="replaceAll" class="find-btn find-text-btn" data-i18n="find.replaceAll" data-i18n-title="find.replaceAll" title="Replace All">All</button>
+          </div>
+        </div>
+        <div id="editorScroll">
+          <div id="editorGutter" aria-hidden="true"></div>
+          <div id="editorBackdrop" aria-hidden="true"></div>
+          <textarea id="editor" spellcheck="false" data-i18n-placeholder="editor.placeholder" placeholder="Select a text file from the left tree."></textarea>
+        </div>
         <img id="imagePreview" alt="" />
       </section>
       <div id="horizontalResizer" class="resizer horizontal" data-i18n-title="ui.dragToResize" title="Drag to resize"></div>
