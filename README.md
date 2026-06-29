@@ -24,7 +24,7 @@ No Node.js needed to run. Grab one of these from the [**latest release**](https:
 - **Zip** — `WSL Workbench-<version>-win.zip`. Extract anywhere and run `WSL Workbench.exe`.
 
 Requires WSL. On first launch, choose a workspace (Open Workspace / Open Workspace File).
-The builds are **self-signed**, so Windows SmartScreen may still warn on first run — choose **More info → Run anyway**, or trust the publisher once (see [Code signing](#code-signing)).
+The builds are **self-signed**, so Windows may show **"Unknown publisher"** / a SmartScreen warning on first run. To remove it (and to enable in-app updates), trust the publisher once — see [Trusting the publisher](#trusting-the-publisher-unknown-publisher-warning).
 Check **Help > About WSL Workbench** for your version and update notifications.
 
 ## Run from source
@@ -61,12 +61,32 @@ dist/WSL Workbench 0.4.0.exe
 Release builds are signed with a **self-signed** certificate (publisher `WSL Workbench`). This is
 enough for trusted/internal distribution but does not clear SmartScreen for the general public.
 
-Trust the publisher once per machine (downloads the `wsl-workbench.cer` from the release):
+### Trusting the publisher ("Unknown publisher" warning)
 
-```powershell
-Import-Certificate -FilePath .\wsl-workbench.cer -CertStoreLocation Cert:\CurrentUser\Root
-Import-Certificate -FilePath .\wsl-workbench.cer -CertStoreLocation Cert:\CurrentUser\TrustedPublisher
-```
+On a PC that has not yet trusted the certificate, Windows shows **Publisher: Unknown publisher** (and
+a SmartScreen warning) when you run the installer. This is expected for a self-signed build — it is not
+a sign that the file is broken. You have two choices:
+
+- **Just install it (quick):** on the SmartScreen prompt choose **More info → Run anyway**. The UAC
+  prompt still says "Unknown publisher", but it installs. Note: this path does **not** enable the
+  in-app updater (see below).
+- **Trust the publisher (recommended):** removes the warning *and* enables in-app updates. Do this once
+  per machine:
+  1. Download **`wsl-workbench.cer`** from the [latest release](https://github.com/nix-tkobayashi/wsl-workbench/releases/latest).
+  2. In the folder containing the `.cer`, open PowerShell and run:
+
+     ```powershell
+     Import-Certificate -FilePath .\wsl-workbench.cer -CertStoreLocation Cert:\CurrentUser\Root
+     Import-Certificate -FilePath .\wsl-workbench.cer -CertStoreLocation Cert:\CurrentUser\TrustedPublisher
+     ```
+
+     The first line pops a **"add to Trusted Root"** confirmation dialog — choose **Yes**. For all users
+     instead of the current user, use `Cert:\LocalMachine\…` from an **admin** PowerShell.
+  3. Run the installer again — the publisher now shows as **WSL Workbench** and the warning is gone.
+
+> Security note: this trusts a self-signed certificate you (the distributor) created. Only do it for
+> builds you trust. The in-app **Help → About → Download and install** updater requires this trust step,
+> because it refuses to run an installer whose signature does not chain to a trusted root.
 
 To produce signed builds yourself, create a code-signing cert, export a `.pfx`, and point
 electron-builder at it via env vars (never commit the `.pfx`):
