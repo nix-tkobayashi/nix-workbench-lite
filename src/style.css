@@ -26,7 +26,23 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 #cwd { position:sticky; top:-8px; margin:-8px -8px 6px; padding:8px 10px; background:var(--panel); border-bottom:1px solid var(--border); color:var(--muted); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 #cwd:empty { display:none; }
 #rightPane { display:grid; grid-template-rows: 38% 5px 1fr; min-width:0; min-height:0; }
-#editorPane { min-height:120px; overflow:hidden; display:flex; flex-direction:column; }
+#editorPane { min-height:120px; overflow:hidden; display:flex; flex-direction:column; position:relative; }
+/* Find & replace widget, floated over the top-right of the editor (VS Code style). */
+#findWidget { position:absolute; top:34px; right:16px; z-index:50; display:flex; flex-direction:column; gap:4px; padding:6px; background:#252526; border:1px solid #454545; border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.5); }
+#findWidget.hidden { display:none; }
+.find-row { display:flex; align-items:center; gap:4px; }
+.find-replace-row { display:none; }
+#findWidget.with-replace .find-replace-row { display:flex; }
+#findInput, #replaceInput { width:210px; background:#1e1e1e; color:var(--text); border:1px solid #3c3c3c; border-radius:4px; padding:4px 6px; font-size:12px; outline:none; }
+#findInput:focus, #replaceInput:focus { border-color:var(--accent); }
+.find-count { min-width:62px; font-size:11px; color:var(--muted); text-align:center; white-space:nowrap; }
+.find-btn, .find-toggle { min-width:24px; padding:3px 6px; background:transparent; border:0; border-radius:4px; color:var(--muted); font-size:12px; line-height:1; cursor:pointer; }
+.find-text-btn { font-size:11px; }
+.find-btn:hover:not(:disabled), .find-toggle:hover:not(:disabled) { background:var(--hover); color:var(--text); }
+.find-btn:disabled { opacity:.4; cursor:default; }
+.find-toggle.active { background:var(--accent); color:#fff; }
+.find-expand { transition: transform .12s ease; }
+#findWidget.with-replace .find-expand { transform: rotate(90deg); }
 #editorBar { height:30px; padding:0 4px; border-bottom:1px solid var(--border); color:var(--muted); font-size:12px; display:flex; align-items:center; overflow:hidden; }
 #editorTabList { display:flex; gap:2px; min-width:0; overflow-x:auto; height:100%; align-items:center; }
 .editor-tab { display:flex; align-items:center; gap:4px; height:24px; padding:0 8px; border-radius:4px; background:transparent; color:var(--muted); font-size:12px; white-space:nowrap; cursor:pointer; }
@@ -35,7 +51,16 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 .editor-tab-dirty { color:#ffcc66; min-width:8px; font-size:10px; }
 .editor-tab-close { width:14px; text-align:center; border-radius:3px; color:var(--muted); }
 .editor-tab-close:hover { background:#555; color:#fff; }
-#editor { flex:1; width:100%; resize:none; border:0; outline:0; padding:10px; background:#181818; color:var(--text); font-family: Consolas, "Cascadia Mono", monospace; font-size:13px; line-height:1.45; white-space:pre; overflow:auto; tab-size:2; }
+/* The editor and a highlight backdrop share identical text metrics and scroll in lockstep; the
+   textarea sits on top with a transparent background so the backdrop's match highlights show through. */
+#editorScroll { position:relative; flex:1; min-height:0; background:#181818; overflow:hidden; }
+#editor, #editorBackdrop { position:absolute; inset:0; margin:0; padding:10px 10px 10px 52px; font-family: Consolas, "Cascadia Mono", monospace; font-size:13px; line-height:1.45; white-space:pre; tab-size:2; border:0; }
+#editor { width:100%; height:100%; resize:none; outline:0; background:transparent; color:var(--text); overflow:auto; }
+#editorBackdrop { overflow:hidden; color:transparent; pointer-events:none; }
+/* Line-number gutter, scroll-synced with the editor; its width and the editors' left padding are set in JS. */
+#editorGutter { position:absolute; top:0; left:0; bottom:0; width:46px; box-sizing:border-box; padding:10px 6px 10px 0; overflow:hidden; font-family: Consolas, "Cascadia Mono", monospace; font-size:13px; line-height:1.45; white-space:pre; text-align:right; color:#6a6a6a; background:#1c1c1c; border-right:1px solid #2a2a2a; pointer-events:none; user-select:none; }
+#editorBackdrop mark { background:rgba(95,140,255,.35); color:transparent; border-radius:2px; }
+#editorBackdrop mark.current { background:rgba(255,180,84,.55); }
 #imagePreview { display:none; flex:1; min-height:0; width:100%; object-fit:contain; background:#181818; padding:10px; }
 #terminalPane { min-height:120px; overflow:hidden; display:flex; flex-direction:column; }
 #terminalPane.drag-over { outline:2px dashed var(--accent); outline-offset:-2px; }

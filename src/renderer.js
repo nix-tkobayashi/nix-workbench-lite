@@ -8,7 +8,36 @@ let contextNode = null;
 const layout = document.getElementById('layout');
 const rightPane = document.getElementById('rightPane');
 const editor = document.getElementById('editor');
+const editorScroll = document.getElementById('editorScroll');
+const editorBackdrop = document.getElementById('editorBackdrop');
+const editorGutter = document.getElementById('editorGutter');
 const imagePreview = document.getElementById('imagePreview');
+let gutterLineCount = -1;
+
+// Render the line-number gutter (only when the line count changes) and keep the editors' left padding
+// matched to its width. Called whenever editor content is loaded or edited.
+function renderGutter() {
+  const n = editor.value ? (editor.value.match(/\n/g) || []).length + 1 : 1;
+  if (n !== gutterLineCount) {
+    gutterLineCount = n;
+    const nums = new Array(n);
+    for (let i = 0; i < n; i++) nums[i] = i + 1;
+    editorGutter.textContent = nums.join('\n');
+    const width = Math.max(40, String(n).length * 8 + 20);
+    editorGutter.style.width = width + 'px';
+    const pad = (width + 6) + 'px';
+    editor.style.paddingLeft = pad;
+    editorBackdrop.style.paddingLeft = pad;
+  }
+  syncEditorOverlays();
+}
+
+// Keep the backdrop (both axes) and the gutter (vertical) aligned with the textarea's scroll position.
+function syncEditorOverlays() {
+  editorBackdrop.scrollTop = editor.scrollTop;
+  editorBackdrop.scrollLeft = editor.scrollLeft;
+  editorGutter.scrollTop = editor.scrollTop;
+}
 
 const landing = document.getElementById('landing');
 
@@ -253,7 +282,7 @@ const editorTabList = document.getElementById('editorTabList');
 
 function showImagePreview(on) {
   imagePreview.style.display = on ? 'block' : 'none';
-  editor.style.display = on ? 'none' : '';
+  editorScroll.style.display = on ? 'none' : '';
 }
 
 function anyEditorDirty() {
@@ -296,6 +325,8 @@ function renderActiveEditor() {
     editor.value = '';
     editor.disabled = false;
     refreshEditorTabs();
+    renderGutter();
+    syncFindToActiveEditor();
     return;
   }
   if (tab.isImage) {
@@ -309,6 +340,8 @@ function renderActiveEditor() {
     editor.disabled = !!tab.disabled;
   }
   refreshEditorTabs();
+  renderGutter();
+  syncFindToActiveEditor();
 }
 
 function makeEditorTabEl(tab) {
@@ -428,15 +461,23 @@ function retargetEditorTabs(oldPath, newPath) {
 
 editor.addEventListener('input', () => {
   if (editorTabs.get(selectedPath)) setDirty(true);
+  renderGutter();             // line count may have changed
+  refreshFind(false);         // keep match list/count current while typing in the editor
 });
 
-// Ctrl+S (not Ctrl+Shift+S, which is Save Workspace) saves the active tab. The toolbar button and
-// the menu item were removed; Ctrl+S is the single save affordance.
+// Ctrl+S saves the active tab; Ctrl+F opens find, Ctrl+H find+replace (none use Shift). Save Workspace
+// is Ctrl+Shift+S. Find/replace only opens when the editor (not the terminal) holds focus.
 window.addEventListener('keydown', (event) => {
-  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 's') {
-    event.preventDefault();
-    saveCurrentFile();
+  const ctrl = event.ctrlKey || event.metaKey;
+  if (!ctrl && event.key === 'F3') {
+    if (!findWidget.classList.contains('hidden') && editorHasFocusForFind()) { event.preventDefault(); selectFindMatch(findIndex + (event.shiftKey ? -1 : 1)); }
+    return;
   }
+  if (!ctrl || event.shiftKey) return;
+  const key = event.key.toLowerCase();
+  if (key === 's') { event.preventDefault(); saveCurrentFile(); }
+  else if (key === 'f') { if (editorHasFocusForFind()) { event.preventDefault(); openFind(false); } }
+  else if (key === 'h') { if (editorHasFocusForFind()) { event.preventDefault(); openFind(true); } }
 });
 
 async function saveCurrentFile() {
@@ -451,6 +492,222 @@ async function saveCurrentFile() {
     alert(error.message || String(error));
   }
 }
+
+// --- Find & replace in the file viewer (operates on the active editor textarea) ---
+const findWidget = document.getElementById('findWidget');
+const findInput = document.getElementById('findInput');
+const replaceInput = document.getElementById('replaceInput');
+const findCount = document.getElementById('findCount');
+const findCaseBtn = document.getElementById('findCase');
+const findToggleReplaceBtn = document.getElementById('findToggleReplace');
+const replaceOneBtn = document.getElementById('replaceOne');
+const replaceAllBtn = document.getElementById('replaceAll');
+let findMatches = [];
+let findIndex = -1;
+let findCaseSensitive = false;
+let findMarkEls = [];      // the rendered <mark> elements, one per match (rebuilt only when matches change)
+let findCurrentEl = null;  // the <mark> currently marked .current
+
+// An editable text tab must be active (not an image, not a read-only/error view).
+function editorIsTextEditable() {
+  const tab = editorTabs.get(selectedPath);
+  return !!(tab && !tab.isImage && !tab.disabled);
+}
+// Open find via Ctrl+F/H only when the editor (or its already-open find widget) holds focus — not the
+// terminal (which uses ^F/^H) or the tree. The user clicks into the file to search it.
+function editorHasFocusForFind() {
+  if (!editorIsTextEditable()) return false;
+  const active = document.activeElement;
+  return active === editor || findWidget.contains(active);
+}
+
+function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+// Match the (literal, escaped) query against the original text so offsets stay aligned — case-insensitive
+// matching via a regex flag, not toLowerCase(), which can change length for some Unicode characters.
+function computeFindMatches() {
+  findMatches = [];
+  const q = findInput.value;
+  if (!q || !editorIsTextEditable()) { findIndex = -1; return; }
+  const re = new RegExp(escapeRegExp(q), findCaseSensitive ? 'g' : 'gi');
+  const text = editor.value;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    findMatches.push({ start: m.index, end: m.index + m[0].length });
+    if (re.lastIndex === m.index) re.lastIndex++; // defensive: never stall on a zero-width match
+  }
+  if (findIndex >= findMatches.length) findIndex = findMatches.length - 1;
+}
+
+function escapeHtml(s) { return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+// Rebuild the backdrop's highlight spans from the current match set. This O(text) work runs only when
+// the match set changes (query/content edit) — not on plain next/previous navigation.
+function renderFindHighlights() {
+  findCurrentEl = null;
+  findMarkEls = [];
+  if (findWidget.classList.contains('hidden') || !findMatches.length) { editorBackdrop.textContent = ''; return; }
+  const text = editor.value;
+  let html = '';
+  let last = 0;
+  for (const m of findMatches) {
+    html += escapeHtml(text.slice(last, m.start)) + '<mark>' + escapeHtml(text.slice(m.start, m.end)) + '</mark>';
+    last = m.end;
+  }
+  html += escapeHtml(text.slice(last));
+  // A textarea reserves a final empty line after a trailing newline, but a <div> with white-space:pre
+  // does not — append a space so the backdrop's height (and thus scroll range) matches the textarea,
+  // otherwise highlights drift one line down when scrolled to the bottom.
+  editorBackdrop.innerHTML = html + ' ';
+  findMarkEls = editorBackdrop.getElementsByTagName('mark');
+  setCurrentMark();
+  syncEditorOverlays();
+}
+
+// Move the `.current` emphasis to findMarkEls[findIndex] — O(1), used for next/previous navigation.
+function setCurrentMark() {
+  if (findCurrentEl) findCurrentEl.classList.remove('current');
+  findCurrentEl = (findIndex >= 0 && findMarkEls[findIndex]) || null;
+  if (findCurrentEl) findCurrentEl.classList.add('current');
+}
+
+function updateFindCount() {
+  if (!findInput.value) findCount.textContent = '';
+  else if (!findMatches.length) findCount.textContent = t('find.noResults');
+  else findCount.textContent = `${findIndex + 1}/${findMatches.length}`;
+  const canReplace = editorIsTextEditable() && findMatches.length > 0;
+  replaceOneBtn.disabled = !canReplace;
+  replaceAllBtn.disabled = !canReplace;
+}
+
+// Scroll the textarea so the current match is in view (both axes), using the rendered mark's geometry.
+function scrollEditorToCurrentMark() {
+  const el = findCurrentEl;
+  if (!el) return;
+  const h = el.offsetHeight || 18;
+  if (el.offsetTop < editor.scrollTop || el.offsetTop + h > editor.scrollTop + editor.clientHeight) {
+    editor.scrollTop = Math.max(0, el.offsetTop - editor.clientHeight / 2);
+  }
+  if (el.offsetLeft < editor.scrollLeft || el.offsetLeft + el.offsetWidth > editor.scrollLeft + editor.clientWidth) {
+    editor.scrollLeft = Math.max(0, el.offsetLeft - editor.clientWidth / 2);
+  }
+  syncEditorOverlays();
+}
+
+// Make the i-th match current and scroll it into view. Focus stays in the find box; the backdrop
+// highlight is visible regardless of focus, so this needs no text selection.
+function selectFindMatch(i) {
+  if (!findMatches.length) { updateFindCount(); return; }
+  findIndex = ((i % findMatches.length) + findMatches.length) % findMatches.length;
+  setCurrentMark();
+  scrollEditorToCurrentMark();
+  updateFindCount();
+}
+
+// Recompute matches and repaint highlights; when `jump`, move to the first match at/after the caret.
+function refreshFind(jump) {
+  if (findWidget.classList.contains('hidden')) return;
+  const caret = editor.selectionStart || 0;
+  computeFindMatches();
+  renderFindHighlights();
+  if (!findMatches.length) { findIndex = -1; updateFindCount(); return; }
+  if (jump) {
+    const idx = findMatches.findIndex((m) => m.start >= caret);
+    selectFindMatch(idx === -1 ? 0 : idx);
+  } else {
+    if (findIndex < 0) findIndex = 0;
+    setCurrentMark();
+    updateFindCount();
+  }
+}
+
+function syncFindToActiveEditor() {
+  if (findWidget.classList.contains('hidden')) return;
+  if (editorIsTextEditable()) refreshFind(false); else closeFind();
+}
+
+// Show/hide the replace row (the chevron toggle and Ctrl+H both drive this).
+function setReplaceVisible(on) {
+  findWidget.classList.toggle('with-replace', on);
+  findToggleReplaceBtn.setAttribute('aria-expanded', String(on));
+}
+
+function openFind(withReplace) {
+  if (!editorIsTextEditable()) return;
+  findWidget.classList.remove('hidden');
+  setReplaceVisible(!!withReplace);
+  const sel = editor.value.substring(editor.selectionStart, editor.selectionEnd);
+  if (sel && !sel.includes('\n')) findInput.value = sel;
+  findInput.focus();
+  findInput.select();
+  refreshFind(true);
+}
+
+function closeFind() {
+  findWidget.classList.add('hidden');
+  editorBackdrop.textContent = ''; // remove highlights
+  findMarkEls = [];
+  findCurrentEl = null;
+  if (editorIsTextEditable()) editor.focus();
+}
+
+function replaceCurrentMatch() {
+  if (!editorIsTextEditable() || !findMatches.length) return;
+  const m = findMatches[findIndex] || findMatches[0];
+  const rep = replaceInput.value;
+  editor.value = editor.value.slice(0, m.start) + rep + editor.value.slice(m.end);
+  setDirty(true);
+  renderGutter();
+  const caretAfter = m.start + rep.length;
+  computeFindMatches();
+  renderFindHighlights();
+  if (!findMatches.length) { findIndex = -1; setCurrentMark(); updateFindCount(); return; }
+  const idx = findMatches.findIndex((x) => x.start >= caretAfter);
+  selectFindMatch(idx === -1 ? 0 : idx);
+}
+
+function replaceAllMatches() {
+  if (!editorIsTextEditable()) return;
+  computeFindMatches();
+  if (!findMatches.length) return;
+  const rep = replaceInput.value;
+  let v = editor.value;
+  for (let i = findMatches.length - 1; i >= 0; i--) v = v.slice(0, findMatches[i].start) + rep + v.slice(findMatches[i].end);
+  editor.value = v;
+  setDirty(true);
+  renderGutter();
+  // The replacement text may itself contain the search string; show/select any remaining matches.
+  findIndex = -1;
+  computeFindMatches();
+  renderFindHighlights();
+  if (findMatches.length) selectFindMatch(0); else updateFindCount();
+}
+
+editor.addEventListener('scroll', syncEditorOverlays);
+findInput.addEventListener('input', () => refreshFind(true));
+findCaseBtn.addEventListener('click', () => {
+  findCaseSensitive = !findCaseSensitive;
+  findCaseBtn.classList.toggle('active', findCaseSensitive);
+  findCaseBtn.setAttribute('aria-pressed', String(findCaseSensitive));
+  refreshFind(true);
+});
+findToggleReplaceBtn.addEventListener('click', () => {
+  setReplaceVisible(!findWidget.classList.contains('with-replace'));
+  findInput.focus();
+});
+document.getElementById('findNext').addEventListener('click', () => selectFindMatch(findIndex + 1));
+document.getElementById('findPrev').addEventListener('click', () => selectFindMatch(findIndex - 1));
+document.getElementById('findClose').addEventListener('click', closeFind);
+replaceOneBtn.addEventListener('click', replaceCurrentMatch);
+replaceAllBtn.addEventListener('click', replaceAllMatches);
+findInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') { event.preventDefault(); selectFindMatch(findIndex + (event.shiftKey ? -1 : 1)); }
+  else if (event.key === 'Escape') { event.preventDefault(); closeFind(); }
+});
+replaceInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') { event.preventDefault(); replaceCurrentMatch(); }
+  else if (event.key === 'Escape') { event.preventDefault(); closeFind(); }
+});
 
 
 function parentDirFor(node) {
