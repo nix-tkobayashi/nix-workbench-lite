@@ -4,7 +4,8 @@ body { margin:0; height:100vh; overflow:hidden; background:var(--bg); color:var(
 /* The toolbar doubles as the custom title bar: the whole row is the window drag region. */
 #toolbar { height:42px; display:flex; align-items:center; gap:12px; padding:0 12px; border-bottom:1px solid var(--border); background:#111; -webkit-app-region: drag; }
 #appIcon { width:20px; height:20px; flex:none; display:block; }
-.title { font-weight:600; }
+.title { font-weight:600; flex:0 1 auto; min-width:0; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.title:empty { display:none; }
 #menubar { display:flex; gap:2px; }
 /* Interactive elements must opt out of the drag region or clicks become window drags. */
 .menubtn, #claudeBtn, #winControls { -webkit-app-region: no-drag; }
