@@ -57,11 +57,8 @@ function applyLanguage() {
   document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { el.placeholder = t(el.dataset.i18nPlaceholder); });
   document.querySelectorAll('[data-i18n-title]').forEach((el) => { el.title = t(el.dataset.i18nTitle); });
-  // Re-label open terminal tabs in the new language (file/editor tab names are not localized).
-  for (const entry of terminals.values()) {
-    const lbl = entry.tab.querySelector('.term-tab-label');
-    if (lbl) lbl.textContent = `${t('terminal.tab')} ${entry.id}`;
-  }
+  // Re-label open terminal tabs in the new language (a custom name, if set, is kept).
+  for (const entry of terminals.values()) relabelTermTab(entry);
 }
 
 // Promise-based replacement for the unsupported window.prompt() in Electron.
@@ -124,12 +121,33 @@ function activateTerminal(id) {
   setTimeout(() => { fitTerminal(entry); entry.term.focus(); }, 0);
 }
 
+// A terminal tab shows its custom name when set, otherwise the localized default "Terminal <id>".
+function termTabText(entry) { return entry.name || `${t('terminal.tab')} ${entry.id}`; }
+
+function relabelTermTab(entry) {
+  const lbl = entry.tab && entry.tab.querySelector('.term-tab-label');
+  if (!lbl) return;
+  lbl.textContent = termTabText(entry);
+  lbl.title = t('terminal.renameHint');
+}
+
+// Double-click a terminal tab to rename it (empty input restores the default name).
+async function renameTerminal(entry) {
+  const next = await askPrompt(t('prompt.renameTerminal'), termTabText(entry));
+  if (next === null) return;
+  const trimmed = next.trim();
+  // Empty, or unchanged from the localized default, means "no custom name" (keep localizing it).
+  entry.name = (!trimmed || trimmed === `${t('terminal.tab')} ${entry.id}`) ? null : trimmed;
+  relabelTermTab(entry);
+}
+
 function makeTermTab(entry) {
   const tab = document.createElement('div');
   tab.className = 'term-tab';
   const label = document.createElement('span');
   label.className = 'term-tab-label';
-  label.textContent = `${t('terminal.tab')} ${entry.id}`;
+  label.textContent = termTabText(entry);
+  label.title = t('terminal.renameHint');
   const close = document.createElement('span');
   close.className = 'term-tab-close';
   close.textContent = '×';
@@ -138,6 +156,7 @@ function makeTermTab(entry) {
     if (event.target === close) return;
     activateTerminal(entry.id);
   });
+  label.addEventListener('dblclick', (event) => { event.stopPropagation(); renameTerminal(entry); });
   close.addEventListener('click', (event) => { event.stopPropagation(); closeTerminal(entry.id); });
   terminalTabList.appendChild(tab);
   return tab;
@@ -172,7 +191,7 @@ function wireTerminal(entry) {
     }
     if (key === 'v') {
       const text = window.api.clipboardReadText();
-      if (text) window.api.terminalWrite({ id, data: text });
+      if (text) term.paste(text); // bracketed paste (see the right-click paste note above)
       event.preventDefault();
       return false;
     }
@@ -186,13 +205,26 @@ function wireTerminal(entry) {
     clearSelection: () => term.clearSelection(),
     readClipboard: () => window.api.clipboardReadText(),
     writeClipboard: (text) => window.api.clipboardWriteText(text),
-    writePty: (text) => window.api.terminalWrite({ id, data: text })
+    // Deliver pasted text through xterm so it goes in as one bracketed paste (writing raw multi-line
+    // bytes straight to the pty gets echoed twice by ConPTY / a bracketed-paste TUI).
+    paste: (text) => term.paste(text)
   };
+  // Capture phase + stopPropagation so xterm never sees the right-click: otherwise, when the app has
+  // mouse reporting on (e.g. Claude Code), xterm forwards it as a mouse event that corrupts the paste
+  // rendering. Right-click is a terminal paste/copy action, not something the app should receive.
   entry.host.addEventListener('mousedown', (event) => {
     if (event.button !== 2) return;
+    event.preventDefault();
+    event.stopPropagation();
     const result = window.terminalActions.terminalRightClick(io);
     if (result.action === 'paste') term.focus();
-  });
+  }, true);
+  // Also swallow the matching right-button mouseup so xterm doesn't emit a dangling release report.
+  entry.host.addEventListener('mouseup', (event) => {
+    if (event.button !== 2) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
 }
 
 function createTerminal({ command = '' } = {}) {
@@ -205,7 +237,7 @@ function createTerminal({ command = '' } = {}) {
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(host);
-  const entry = { id, term, fit, host, exited: false, tab: null };
+  const entry = { id, term, fit, host, exited: false, tab: null, name: null };
   entry.tab = makeTermTab(entry);
   terminals.set(id, entry);
   wireTerminal(entry);
@@ -725,6 +757,12 @@ function basenameFor(wslPath) {
   return wslPath.split('/').filter(Boolean).pop() || wslPath;
 }
 
+// Toolbar title: the active workspace's leaf directory in brackets (e.g. "[test003]"), or blank when
+// no workspace is open.
+function updateWorkspaceName() {
+  document.getElementById('workspaceName').textContent = config ? `[${basenameFor(config.wslPath)}]` : '';
+}
+
 function showContextMenu(event, node) {
   event.preventDefault();
   event.stopPropagation();
@@ -940,6 +978,7 @@ async function renderTree() {
   const cwdEl = document.getElementById('cwd');
   cwdEl.textContent = `${cfg.distro}:${cfg.wslPath}`;
   cwdEl.title = cwdEl.textContent;
+  updateWorkspaceName();
   // Invalidate the poll baseline so a just-rendered state is not re-detected as a change.
   lastTreeSignature = null;
 }
@@ -974,6 +1013,7 @@ async function applyWorkspace(nextConfig) {
       window.api.resyncWorkspace({ workspace: prevConfig, showLanding: false });
     } else {
       landing.classList.remove('hidden');
+      updateWorkspaceName();
       window.api.resyncWorkspace({ showLanding: true });
     }
     return;
@@ -1127,7 +1167,7 @@ function initTerminalDropTarget() {
     const entry = activeTerminal();
     if (!entry) return;
     event.preventDefault();
-    window.api.terminalWrite({ id: entry.id, data: shellQuotePath(currentTreeDragPath) + ' ' });
+    entry.term.paste(shellQuotePath(currentTreeDragPath) + ' '); // insert via bracketed paste, like the clipboard paste
     entry.term.focus();
   });
 }
@@ -1250,6 +1290,7 @@ document.getElementById('claudeBtn').addEventListener('click', () => {
   if (initial.showLanding) {
     config = null; // no active workspace yet; the landing screen drives the next step
     landing.classList.remove('hidden');
+    updateWorkspaceName();
     return;
   }
   landing.classList.add('hidden');

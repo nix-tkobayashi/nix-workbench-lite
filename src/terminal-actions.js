@@ -12,7 +12,7 @@
       return { action: 'copy', text };
     }
     const text = io.readClipboard() || '';
-    if (text) io.writePty(text);
+    if (text) io.paste(text);
     return { action: 'paste', text };
   }
 

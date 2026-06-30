@@ -7,14 +7,14 @@ const { terminalRightClick } = require('../src/terminal-actions');
 
 // Build a mock io that records calls and lets the test control selection/clipboard.
 function makeIO({ selection = '', clipboard = '' } = {}) {
-  const calls = { writeClipboard: [], writePty: [], clearSelection: 0 };
+  const calls = { writeClipboard: [], paste: [], clearSelection: 0 };
   return {
     hasSelection: () => selection.length > 0,
     getSelection: () => selection,
     clearSelection: () => { calls.clearSelection += 1; },
     readClipboard: () => clipboard,
     writeClipboard: (t) => calls.writeClipboard.push(t),
-    writePty: (t) => calls.writePty.push(t),
+    paste: (t) => calls.paste.push(t),
     calls
   };
 }
@@ -26,7 +26,7 @@ test('copies the selection and clears it when text is selected', () => {
   assert.equal(r.text, 'hello world');
   assert.deepEqual(io.calls.writeClipboard, ['hello world']);
   assert.equal(io.calls.clearSelection, 1);
-  assert.deepEqual(io.calls.writePty, []); // must not paste when copying
+  assert.deepEqual(io.calls.paste, []); // must not paste when copying
 });
 
 test('pastes the clipboard into the pty when there is no selection', () => {
@@ -34,7 +34,7 @@ test('pastes the clipboard into the pty when there is no selection', () => {
   const r = terminalRightClick(io);
   assert.equal(r.action, 'paste');
   assert.equal(r.text, 'pasted text');
-  assert.deepEqual(io.calls.writePty, ['pasted text']);
+  assert.deepEqual(io.calls.paste, ['pasted text']);
   assert.deepEqual(io.calls.writeClipboard, []); // must not copy when pasting
   assert.equal(io.calls.clearSelection, 0);
 });
@@ -43,7 +43,7 @@ test('paste with empty clipboard is a no-op write', () => {
   const io = makeIO({ selection: '', clipboard: '' });
   const r = terminalRightClick(io);
   assert.equal(r.action, 'paste');
-  assert.deepEqual(io.calls.writePty, []);
+  assert.deepEqual(io.calls.paste, []);
 });
 
 test('copy ignores a falsy selection text without writing the clipboard', () => {
