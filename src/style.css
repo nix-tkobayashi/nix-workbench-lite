@@ -21,15 +21,19 @@ body { margin:0; height:100vh; overflow:hidden; background:var(--bg); color:var(
 button { background:#2a2a2a; color:var(--text); border:1px solid #444; padding:5px 10px; border-radius:6px; cursor:pointer; }
 button:hover:not(:disabled) { background:#3a3a3a; }
 button:disabled { opacity:.45; cursor:not-allowed; }
-#layout { display:grid; grid-template-columns: 330px 5px 1fr; height:calc(100vh - 42px); min-width:0; }
+#layout { display:grid; grid-template-columns: 330px 2px 1fr; height:calc(100vh - 42px); min-width:0; }
 #treePane { background:var(--panel); overflow:auto; padding:8px; min-width:180px; font-size:13px; outline:none; }
 /* Current workspace directory, shown as a header above the tree (sticks to the top when scrolling). */
-#cwd { position:sticky; top:-8px; margin:-8px -8px 6px; padding:8px 10px; background:var(--panel); border-bottom:1px solid var(--border); color:var(--muted); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+#cwd { position:sticky; top:-8px; margin:-8px -8px 6px; padding:8px 10px; background:var(--panel); border-bottom:1px solid var(--border); color:var(--muted); font-size:12px; display:flex; align-items:center; gap:8px; cursor:pointer; }
+#cwdPath { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Git branch badge in the tree header; ⎇ + branch name, with a * suffix (added in JS) when dirty. */
+#gitBranch { flex:0 0 auto; max-width:45%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); background:#2b2b2b; border-radius:4px; padding:1px 7px; font-size:11px; }
+#gitBranch.hidden { display:none; }
 /* Root is the clipboard-image paste target (nothing selected in the tree): mark the path header. */
 #cwd.paste-target { box-shadow: inset 2px 0 0 var(--accent); color:var(--text); }
 #treePane.drag-over { outline:2px dashed var(--accent); outline-offset:-2px; }
 #cwd:empty { display:none; }
-#rightPane { display:grid; grid-template-rows: 38% 5px 1fr; min-width:0; min-height:0; }
+#rightPane { display:grid; grid-template-rows: 38% 2px 1fr; min-width:0; min-height:0; }
 #editorPane { min-height:120px; overflow:hidden; display:flex; flex-direction:column; position:relative; }
 /* Find & replace widget, floated over the top-right of the editor (VS Code style). */
 #findWidget { position:absolute; top:34px; right:16px; z-index:50; display:flex; flex-direction:column; gap:4px; padding:6px; background:#252526; border:1px solid #454545; border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.5); }
@@ -48,7 +52,12 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 .find-expand { transition: transform .12s ease; }
 #findWidget.with-replace .find-expand { transform: rotate(90deg); }
 #editorBar { height:30px; padding:0 4px; border-bottom:1px solid var(--border); color:var(--muted); font-size:12px; display:flex; align-items:center; overflow:hidden; }
-#editorTabList { display:flex; gap:2px; min-width:0; overflow-x:auto; height:100%; align-items:center; }
+#editorTabList { display:flex; gap:2px; min-width:0; flex:1 1 auto; overflow-x:auto; height:100%; align-items:center; }
+/* Preview/Edit toggle at the right of the editor bar; shown only for Markdown files (via JS). */
+.editor-toolbtn { flex:0 0 auto; height:22px; margin-left:8px; padding:0 10px; background:#2a2a2a; border:1px solid #444; border-radius:4px; color:var(--text); font-size:12px; cursor:pointer; }
+.editor-toolbtn:hover { background:#3a3a3a; }
+.editor-toolbtn.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+.editor-toolbtn.hidden { display:none; }
 .editor-tab { flex:0 0 auto; max-width:220px; display:flex; align-items:center; gap:4px; height:24px; padding:0 8px; border-radius:4px; background:transparent; color:var(--muted); font-size:12px; white-space:nowrap; cursor:pointer; }
 .editor-tab-label { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .editor-tab:hover { background:var(--hover); }
@@ -65,6 +74,25 @@ button:disabled { opacity:.45; cursor:not-allowed; }
    render light when the Windows "app mode" is Light, showing white bars on the dark UI). Scoped to
    these two elements so nothing else is affected. */
 #editor, .xterm-viewport { color-scheme: dark; }
+/* Markdown preview: overlays the editor area (same #editorScroll box) when toggled on. */
+#editorPreview { position:absolute; inset:0; margin:0; padding:12px 18px; overflow:auto; color:var(--text); background:#181818; font-family:"Segoe UI",sans-serif; font-size:14px; line-height:1.6; }
+#editorPreview.hidden { display:none; }
+#editorPreview h1, #editorPreview h2, #editorPreview h3, #editorPreview h4 { line-height:1.3; margin:1em 0 .5em; }
+#editorPreview h1 { font-size:1.7em; border-bottom:1px solid var(--border); padding-bottom:.3em; }
+#editorPreview h2 { font-size:1.4em; border-bottom:1px solid var(--border); padding-bottom:.3em; }
+#editorPreview h3 { font-size:1.2em; }
+#editorPreview p { margin:.6em 0; }
+#editorPreview a { color:var(--accent); }
+#editorPreview code { background:#2a2a2a; border-radius:4px; padding:1px 5px; font-family:Consolas,"Cascadia Mono",monospace; font-size:.92em; }
+#editorPreview pre { background:#1c1c1c; border:1px solid var(--border); border-radius:6px; padding:10px 12px; overflow:auto; }
+#editorPreview pre code { background:none; padding:0; }
+#editorPreview blockquote { margin:.6em 0; padding:.2em 1em; border-left:3px solid #3a3a3a; color:var(--muted); }
+#editorPreview ul, #editorPreview ol { margin:.5em 0; padding-left:1.6em; }
+#editorPreview img { max-width:100%; }
+#editorPreview hr { border:0; border-top:1px solid var(--border); margin:1em 0; }
+#editorPreview table { border-collapse:collapse; }
+/* Tab marker when the open file changed on disk (unsaved edits pending): warn color + ⚠ (set in JS). */
+.editor-tab.changed { color:#e6b450; }
 #editorBackdrop { overflow:hidden; color:transparent; pointer-events:none; }
 /* Line-number gutter, scroll-synced with the editor; its width and the editors' left padding are set in JS. */
 /* z-index keeps the gutter above the textarea so horizontally-scrolled text slides *under* its opaque
@@ -94,8 +122,9 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 .term-pane .xterm { padding-right: 10px; }
 .resizer { background:var(--resizer); z-index:5; }
 .resizer:hover { background:var(--accent); }
-.resizer.vertical { cursor:col-resize; border-left:1px solid var(--border); border-right:1px solid var(--border); }
-.resizer.horizontal { cursor:row-resize; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+/* No side borders: at 2px they'd fill the whole track and hide the background (and its hover accent). */
+.resizer.vertical { cursor:col-resize; }
+.resizer.horizontal { cursor:row-resize; }
 .tree-node { user-select:none; }
 .row { display:flex; align-items:center; gap:5px; height:24px; padding:2px 4px; border-radius:4px; cursor:default; white-space:nowrap; }
 .row:hover { background:var(--hover); }

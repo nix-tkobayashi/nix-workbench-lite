@@ -275,6 +275,19 @@ function createWindow(initialWorkspace = defaultWorkspace(), { showLanding = fal
   win.on('maximize', sendMaximized);
   win.on('unmaximize', sendMaximized);
 
+  // Security hardening for the single-page app: never let content (e.g. a link in the Markdown
+  // preview) open an Electron window or navigate the renderer away from index.html. http(s) targets
+  // are handed to the OS browser; everything else is denied. This also backstops any click path
+  // (middle-click, window.open) that the renderer's own link handler doesn't intercept.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+  });
+
   win.loadFile(path.join(__dirname, 'index.html'));
   buildAppMenu();
   return win;
@@ -825,6 +838,14 @@ ipcMain.handle('file:read', (_event, { distro = DEFAULT_DISTRO, wslPath }) => {
   return fs.readFileSync(fullPath, 'utf8');
 });
 
+// Modification fingerprint of a file (mtime + size), used by the renderer to notice when an open
+// editor file was changed on disk (e.g. by an AI CLI in the terminal) so it can reload it.
+ipcMain.handle('file:stat', (_event, { distro = DEFAULT_DISTRO, wslPath } = {}) => {
+  if (!wslPath) return null;
+  const stat = safeStat(wslPathToWindowsFsPath(distro, wslPath));
+  return stat && stat.isFile() ? { mtimeMs: stat.mtimeMs, size: stat.size } : null;
+});
+
 // Read an image file as a data: URL for the renderer's <img> preview.
 ipcMain.handle('file:readImage', (_event, { distro = DEFAULT_DISTRO, wslPath }) => {
   const fullPath = wslPathToWindowsFsPath(distro, wslPath);
@@ -841,7 +862,37 @@ ipcMain.handle('file:write', (_event, { distro = DEFAULT_DISTRO, wslPath, conten
   const stat = safeStat(fullPath);
   if (!stat || !stat.isFile()) throw new Error(`File not found: ${wslPath}`);
   fs.writeFileSync(fullPath, content ?? '', 'utf8');
+  // Return the new fingerprint so the renderer can update its baseline and not mistake this very
+  // save for an external change on the next poll.
+  const after = safeStat(fullPath);
+  return { ok: true, mtimeMs: after ? after.mtimeMs : null, size: after ? after.size : null };
+});
+
+// Open an http(s) link (e.g. clicked in the Markdown preview) in the user's default browser. Only
+// web schemes are allowed so a document can't launch arbitrary local protocols.
+ipcMain.handle('shell:openExternal', (_event, url) => {
+  if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url);
   return { ok: true };
+});
+
+// Current git branch (or short SHA when detached) and whether the working tree is dirty, for the
+// tree header. Returns null when the workspace isn't a git repo or git is unavailable.
+ipcMain.handle('git:info', (_event, { distro = DEFAULT_DISTRO, wslPath } = {}) => {
+  if (!wslPath) return null;
+  const script =
+    'b=$(git branch --show-current 2>/dev/null); ' +
+    '[ -z "$b" ] && b=$(git rev-parse --short HEAD 2>/dev/null); ' +
+    '[ -z "$b" ] && exit 0; ' +
+    'echo "$b"; ' +
+    '[ -n "$(git status --porcelain 2>/dev/null)" ] && echo dirty || echo clean';
+  const res = require('child_process').spawnSync(
+    'wsl.exe', ['-d', distro, '--cd', wslPath, '--exec', 'bash', '-lc', script],
+    { encoding: 'utf8', timeout: 5000 }
+  );
+  if (res.error || res.status !== 0) return null;
+  const lines = String(res.stdout || '').trim().split('\n');
+  if (!lines[0]) return null;
+  return { branch: lines[0], dirty: lines[1] === 'dirty' };
 });
 
 ipcMain.handle('fs:move', (_event, { distro = DEFAULT_DISTRO, sourcePath, targetDirPath }) => {
