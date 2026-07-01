@@ -26,7 +26,7 @@
   </div>
   <div id="layout">
     <aside id="treePane" tabindex="0">
-      <div id="cwd" title=""></div>
+      <div id="cwd" title=""><span id="cwdPath"></span><span id="gitBranch" class="hidden"></span></div>
       <div id="tree"></div>
     </aside>
     <div id="verticalResizer" class="resizer vertical" data-i18n-title="ui.dragToResize" title="Drag to resize"></div>
@@ -34,6 +34,7 @@
       <section id="editorPane">
         <div id="editorBar">
           <div id="editorTabList"></div>
+          <button id="previewToggle" class="editor-toolbtn hidden" data-i18n="editor.preview">Preview</button>
         </div>
         <div id="findWidget" class="hidden">
           <div class="find-row">
@@ -55,6 +56,7 @@
           <div id="editorGutter" aria-hidden="true"></div>
           <div id="editorBackdrop" aria-hidden="true"></div>
           <textarea id="editor" spellcheck="false" data-i18n-placeholder="editor.placeholder" placeholder="Select a text file from the left tree."></textarea>
+          <div id="editorPreview" class="hidden"></div>
         </div>
         <img id="imagePreview" alt="" />
       </section>
@@ -108,6 +110,7 @@
   </div>
   <script src="./i18n.js"></script>
   <script src="./file-types.js"></script>
+  <script src="./markdown.js"></script>
   <script src="./terminal-actions.js"></script>
   <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
   <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>

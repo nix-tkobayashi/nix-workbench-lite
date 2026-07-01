@@ -29,7 +29,12 @@
     return IMAGE_MIME[extOf(p)] || 'application/octet-stream';
   }
 
-  const fileTypes = { isImagePath, imageMimeForPath, extOf };
+  function isMarkdownPath(p) {
+    const ext = extOf(p);
+    return ext === '.md' || ext === '.markdown';
+  }
+
+  const fileTypes = { isImagePath, imageMimeForPath, extOf, isMarkdownPath };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = fileTypes; // main process: require('./file-types')

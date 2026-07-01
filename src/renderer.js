@@ -13,7 +13,10 @@ const editorScroll = document.getElementById('editorScroll');
 const editorBackdrop = document.getElementById('editorBackdrop');
 const editorGutter = document.getElementById('editorGutter');
 const imagePreview = document.getElementById('imagePreview');
+const editorPreview = document.getElementById('editorPreview');
+const previewToggle = document.getElementById('previewToggle');
 let gutterLineCount = -1;
+let previewMode = false; // Markdown preview on/off (applies only while a Markdown file is active)
 
 // Render the line-number gutter (only when the line count changes) and keep the editors' left padding
 // matched to its width. Called whenever editor content is loaded or edited.
@@ -360,8 +363,11 @@ function anyEditorDirty() {
 function updateEditorTabEl(tab) {
   if (!tab || !tab.el) return;
   tab.el.querySelector('.editor-tab-label').textContent = tab.name;
-  tab.el.querySelector('.editor-tab-dirty').textContent = tab.dirty ? '●' : '';
+  // ⚠ (changed on disk with unsaved edits) takes precedence over ● (unsaved).
+  tab.el.querySelector('.editor-tab-dirty').textContent = tab.externallyChanged ? '⚠' : (tab.dirty ? '●' : '');
   tab.el.classList.toggle('active', tab.path === selectedPath);
+  tab.el.classList.toggle('changed', !!tab.externallyChanged);
+  tab.el.title = tab.externallyChanged ? t('editor.externallyChanged') : tab.path;
 }
 function refreshEditorTabs() { for (const tab of editorTabs.values()) updateEditorTabEl(tab); }
 
@@ -389,6 +395,21 @@ function persistActiveEditor() {
   if (tab && !tab.isImage && !tab.disabled) tab.value = editor.value;
 }
 
+// A live, editable Markdown file can be previewed.
+function activeTabIsMarkdown() {
+  const tab = editorTabs.get(selectedPath);
+  return !!(tab && !tab.isImage && !tab.disabled && window.fileTypes.isMarkdownPath(tab.path));
+}
+
+// Swap the editor area between the textarea (+gutter/backdrop) and the rendered Markdown preview.
+function showMarkdownPreview(on) {
+  editorPreview.classList.toggle('hidden', !on);
+  editor.style.display = on ? 'none' : '';
+  editorGutter.style.display = on ? 'none' : '';
+  editorBackdrop.style.display = on ? 'none' : '';
+  if (on) { editorPreview.innerHTML = window.markdown.render(editor.value); editorPreview.scrollTop = 0; }
+}
+
 // Load the active tab into the shared editor/image view (or blank when no tab is open).
 function renderActiveEditor() {
   const tab = editorTabs.get(selectedPath);
@@ -397,6 +418,8 @@ function renderActiveEditor() {
     imagePreview.removeAttribute('src');
     editor.value = '';
     editor.disabled = false;
+    showMarkdownPreview(false);
+    previewToggle.classList.add('hidden');
     refreshEditorTabs();
     renderGutter();
     syncFindToActiveEditor();
@@ -406,11 +429,19 @@ function renderActiveEditor() {
     showImagePreview(true);
     if (tab.imageSrc) imagePreview.src = tab.imageSrc; else imagePreview.removeAttribute('src');
     editor.disabled = false;
+    showMarkdownPreview(false);
+    previewToggle.classList.add('hidden');
   } else {
     showImagePreview(false);
     imagePreview.removeAttribute('src');
     editor.value = tab.value || '';
     editor.disabled = !!tab.disabled;
+    const isMd = activeTabIsMarkdown();
+    previewToggle.classList.toggle('hidden', !isMd);
+    const showPreview = previewMode && isMd;
+    previewToggle.classList.toggle('active', showPreview);
+    previewToggle.textContent = showPreview ? t('editor.edit') : t('editor.preview');
+    showMarkdownPreview(showPreview);
   }
   refreshEditorTabs();
   scrollActiveEditorTabIntoView();
@@ -431,7 +462,12 @@ function makeEditorTabEl(tab) {
   close.className = 'editor-tab-close';
   close.textContent = '×';
   el.append(label, dirty, close);
-  el.addEventListener('mousedown', (event) => { if (event.target === close) return; activateEditorTab(tab.path); });
+  el.addEventListener('mousedown', async (event) => {
+    if (event.target === close) return;
+    activateEditorTab(tab.path);
+    const current = editorTabs.get(tab.path);
+    if (current && current.externallyChanged) await promptReloadIfNeeded(current);
+  });
   close.addEventListener('click', (event) => { event.stopPropagation(); closeEditorTab(tab.path); });
   editorTabList.appendChild(el);
   return el;
@@ -451,7 +487,7 @@ async function openFileInEditor(node) {
   persistActiveEditor(); // save the previously active tab before switching
   // Register and activate synchronously (read-only while loading) so a second open of the same
   // file activates this tab instead of creating a duplicate, and edits can't be lost mid-load.
-  const tab = { path: node.path, name: basenameFor(node.path), value: '', dirty: false, isImage: false, imageSrc: null, disabled: true, el: null };
+  const tab = { path: node.path, name: basenameFor(node.path), value: '', dirty: false, isImage: false, imageSrc: null, disabled: true, el: null, mtimeMs: null, size: null, externallyChanged: false };
   tab.el = makeEditorTabEl(tab);
   editorTabs.set(node.path, tab);
   selectedPath = node.path;
@@ -463,8 +499,13 @@ async function openFileInEditor(node) {
     try { tab.imageSrc = await window.api.readImage({ distro: config.distro, wslPath: node.path }); tab.isImage = true; }
     catch (error) { tab.value = String(error.message || error); disabled = true; }
   } else {
-    try { tab.value = await window.api.readFile({ distro: config.distro, wslPath: node.path }); }
-    catch (error) { tab.value = String(error.message || error); disabled = true; }
+    try {
+      // Fingerprint BEFORE reading: if the file changes during the read, the baseline stays older
+      // than disk so the next poll re-detects and reloads (never records new mtime with stale text).
+      const st = await window.api.statFile({ distro: config.distro, wslPath: node.path });
+      tab.value = await window.api.readFile({ distro: config.distro, wslPath: node.path });
+      if (st) { tab.mtimeMs = st.mtimeMs; tab.size = st.size; }
+    } catch (error) { tab.value = String(error.message || error); disabled = true; }
   }
   tab.disabled = disabled; // editable once loaded (unless the read failed)
   if (editorTabs.get(node.path) === tab && selectedPath === node.path) renderActiveEditor();
@@ -559,11 +600,75 @@ async function saveCurrentFile() {
   // Skip when there's no editable text buffer: no tab, an image, or an error/read-failure view.
   if (!tab || !config || tab.isImage || tab.disabled) return;
   try {
-    await window.api.writeFile({ distro: config.distro, wslPath: tab.path, content: editor.value });
+    const res = await window.api.writeFile({ distro: config.distro, wslPath: tab.path, content: editor.value });
     tab.value = editor.value;
-    setDirty(false);
+    if (res) { tab.mtimeMs = res.mtimeMs; tab.size = res.size; } // our own write is the new baseline
+    tab.externallyChanged = false;
+    setDirty(false); // also repaints the tab (clears any ⚠ marker)
   } catch (error) {
     alert(error.message || String(error));
+  }
+}
+
+// Re-read a tab from disk, discarding in-memory edits, and refresh the view if it's active. `force`
+// (a user-confirmed reload) overrides the guard that protects edits made during the async read.
+async function reloadTabFromDisk(tab, { force = false } = {}) {
+  if (!config) return;
+  const cfgAtStart = config;
+  try {
+    const st = await window.api.statFile({ distro: cfgAtStart.distro, wslPath: tab.path });
+    const content = await window.api.readFile({ distro: cfgAtStart.distro, wslPath: tab.path });
+    if (config !== cfgAtStart || !editorTabs.has(tab.path)) return; // workspace switched / tab closed
+    // The user may have started typing during the async read; don't silently clobber that (a forced
+    // reload from the explicit confirm is allowed to). Leave it flagged so they can reload on click.
+    if (!force && tab.dirty) { tab.externallyChanged = true; updateEditorTabEl(tab); return; }
+    tab.value = content;
+    if (st) { tab.mtimeMs = st.mtimeMs; tab.size = st.size; }
+    tab.dirty = false;
+    tab.externallyChanged = false;
+    if (tab.path === selectedPath) renderActiveEditor();
+    updateEditorTabEl(tab);
+  } catch (error) {
+    if (force) alert(error.message || String(error)); // background auto-reloads shouldn't spam alerts
+  }
+}
+
+// When a tab flagged as changed-on-disk (with unsaved edits) is clicked, offer to reload or keep.
+async function promptReloadIfNeeded(tab) {
+  if (!tab || !tab.externallyChanged) return;
+  if (confirm(t('confirm.reloadExternal'))) {
+    await reloadTabFromDisk(tab, { force: true });
+  } else {
+    tab.externallyChanged = false; // keep the user's edits; stop flagging
+    updateEditorTabEl(tab);
+  }
+}
+
+// Poll open text tabs for on-disk changes (e.g. an AI CLI edited the file). Clean tabs reload
+// silently; tabs with unsaved edits are flagged (⚠) and reloaded only if the user confirms on click.
+let checkingExternal = false;
+async function checkExternalChanges() {
+  if (checkingExternal || !config || document.hidden) return;
+  checkingExternal = true;
+  const cfgAtStart = config;
+  try {
+    for (const tab of [...editorTabs.values()]) {
+      if (tab.isImage || tab.disabled || tab.mtimeMs == null) continue;
+      let st;
+      try { st = await window.api.statFile({ distro: cfgAtStart.distro, wslPath: tab.path }); } catch { continue; }
+      if (config !== cfgAtStart) return; // workspace switched mid-poll
+      if (!editorTabs.has(tab.path) || !st) continue; // closed, or deleted/unreadable — leave as is
+      if (st.mtimeMs === tab.mtimeMs && st.size === tab.size) continue; // unchanged
+      if (tab.dirty) {
+        tab.mtimeMs = st.mtimeMs; tab.size = st.size; // advance baseline so we flag once per change
+        tab.externallyChanged = true;
+        updateEditorTabEl(tab);
+      } else {
+        await reloadTabFromDisk(tab); // no unsaved edits: safe to refresh in place
+      }
+    }
+  } finally {
+    checkingExternal = false;
   }
 }
 
@@ -805,6 +910,33 @@ function updateWorkspaceName() {
   document.getElementById('workspaceName').textContent = config ? `[${lastTwoSegmentsFor(config.wslPath)}]` : '';
 }
 
+// Show the workspace's current git branch (⎇ name, plus * when dirty) in the tree header, or hide the
+// badge when it isn't a git repo. Re-run on an interval since branch/dirtiness change via the terminal.
+let updatingGitBranch = false;
+async function updateGitBranch() {
+  const badge = document.getElementById('gitBranch');
+  if (!badge) return;
+  if (!config) { badge.classList.add('hidden'); return; }
+  if (updatingGitBranch) return;
+  updatingGitBranch = true;
+  const cfgAtStart = config;
+  try {
+    const info = await window.api.gitInfo({ distro: cfgAtStart.distro, wslPath: cfgAtStart.wslPath });
+    if (config !== cfgAtStart) return; // workspace switched mid-call
+    if (info && info.branch) {
+      badge.textContent = `⎇ ${info.branch}${info.dirty ? ' *' : ''}`;
+      badge.title = info.branch + (info.dirty ? ' (uncommitted changes)' : '');
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  } catch {
+    badge.classList.add('hidden');
+  } finally {
+    updatingGitBranch = false;
+  }
+}
+
 function showContextMenu(event, node) {
   event.preventDefault();
   event.stopPropagation();
@@ -1019,9 +1151,11 @@ async function renderTree() {
   tree.appendChild(fragment);
   tree.scrollTop = prevScroll;
   const cwdEl = document.getElementById('cwd');
-  cwdEl.textContent = `${cfg.distro}:${cfg.wslPath}`;
-  cwdEl.title = cwdEl.textContent;
+  const cwdText = `${cfg.distro}:${cfg.wslPath}`;
+  document.getElementById('cwdPath').textContent = cwdText;
+  cwdEl.title = cwdText;
   updateWorkspaceName();
+  updateGitBranch();
   // Invalidate the poll baseline so a just-rendered state is not re-detected as a change.
   lastTreeSignature = null;
 }
@@ -1076,7 +1210,7 @@ function initResizers() {
     event.preventDefault();
     const onMove = (moveEvent) => {
       const width = Math.max(180, Math.min(700, moveEvent.clientX));
-      layout.style.gridTemplateColumns = `${width}px 5px 1fr`;
+      layout.style.gridTemplateColumns = `${width}px 2px 1fr`;
       fitActiveTerminal();
     };
     const onUp = () => {
@@ -1092,7 +1226,7 @@ function initResizers() {
     const onMove = (moveEvent) => {
       const rect = rightPane.getBoundingClientRect();
       const topHeight = Math.max(120, Math.min(rect.height - 140, moveEvent.clientY - rect.top));
-      rightPane.style.gridTemplateRows = `${topHeight}px 5px 1fr`;
+      rightPane.style.gridTemplateRows = `${topHeight}px 2px 1fr`;
       fitActiveTerminal();
     };
     const onUp = () => {
@@ -1131,6 +1265,23 @@ function initMenubar() {
       const rect = btn.getBoundingClientRect();
       window.api.popupMenu({ index: Number(btn.dataset.menu), x: rect.left, y: rect.bottom });
     });
+  });
+}
+
+// Markdown preview: the toolbar toggle flips edit/preview for the active Markdown file, and links in
+// the rendered preview open in the default browser (never navigate the app window).
+function initEditorPreview() {
+  previewToggle.addEventListener('click', () => {
+    persistActiveEditor(); // keep unsaved edits: copy the live textarea into the tab before re-rendering
+    previewMode = !previewMode;
+    renderActiveEditor();
+  });
+  editorPreview.addEventListener('click', (event) => {
+    const anchor = event.target.closest('a');
+    if (!anchor) return;
+    event.preventDefault();
+    const href = anchor.getAttribute('href') || '';
+    if (/^https?:\/\//i.test(href)) window.api.openExternal(href);
   });
 }
 
@@ -1402,7 +1553,11 @@ document.getElementById('claudeBtn').addEventListener('click', () => {
   initTreePasteTarget();
   initLanding();
   initMenubar();
+  initEditorPreview();
   setInterval(pollTreeChanges, 1500);
+  setInterval(checkExternalChanges, 2000); // reload open files edited on disk (e.g. by the AI CLI)
+  setInterval(updateGitBranch, 4000);      // keep the tree-header branch badge current
+  window.addEventListener('focus', () => { checkExternalChanges(); updateGitBranch(); });
 
   const initial = await window.api.getConfig();
   currentLang = window.i18n.normalizeLang(initial.lang);

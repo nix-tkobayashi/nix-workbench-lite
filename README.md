@@ -127,6 +127,13 @@ Internal tree drag and drop performs move/rename via Windows UNC path:
 
 The editor is intentionally minimal. Test file editing and drag/drop operations in a throwaway directory before using it on important repositories.
 
+## v0.12.2
+
+- Open files now detect changes on disk (e.g. edits made by the AI CLI in the terminal): files with no unsaved edits reload automatically, while files with unsaved edits are flagged with ⚠ and reload only when you click the tab and confirm.
+- The tree header shows the workspace's current git branch (with a `*` when there are uncommitted changes).
+- Markdown files (`.md`) get a **Preview / Edit** toggle in the editor bar. Links open in your default browser.
+- Thinner dividers between the tree, editor, and terminal panes.
+
 ## v0.12.1
 
 - The viewer and terminal scrollbars now render dark to match the always-dark UI (they were showing as light bars when the Windows "app mode" was Light).
